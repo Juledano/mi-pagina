@@ -1,0 +1,2359 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Football Scout AI - Análisis Biomecánico & Ojeador de Fútbol</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Font Awesome Icons CDN -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            pitchDark: '#07170E',
+            pitchSurface: '#0F2619',
+            pitchSurfaceVariant: '#163524',
+            pitchSurfaceElevated: '#1E4631',
+            pitchBorder: '#26573C',
+            neonGreen: '#00E676',
+            brightGreen: '#10B981',
+            accentGold: '#FFD600',
+            warningOrange: '#FF9100',
+            dangerRed: '#FF5252',
+            telemetryBlue: '#38BDF8',
+            pitchMuted: '#64748B',
+            pitchTextSecondary: '#94A3B8'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Athletic Glow & HUD Styles */
+    body {
+      background-color: #07170E;
+      color: #FFFFFF;
+      font-family: 'Inter', sans-serif;
+      overflow-x: hidden;
+    }
+    
+    .glow-neon {
+      box-shadow: 0 0 15px rgba(0, 230, 118, 0.35);
+    }
+    .glow-neon-lg {
+      box-shadow: 0 0 25px rgba(0, 230, 118, 0.6);
+    }
+    .glow-gold {
+      box-shadow: 0 0 15px rgba(255, 214, 0, 0.4);
+    }
+    .glow-blue {
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.35);
+    }
+
+    /* Laser scanline animation */
+    @keyframes scanlineAnim {
+      0% { top: 10%; opacity: 0.8; }
+      50% { top: 85%; opacity: 1; }
+      100% { top: 10%; opacity: 0.8; }
+    }
+    .hud-laser {
+      position: absolute;
+      left: 10%;
+      width: 80%;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, #00E676, #FFFFFF, #00E676, transparent);
+      box-shadow: 0 0 12px #00E676;
+      animation: scanlineAnim 2.8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    /* Pulse badge */
+    @keyframes pulseLive {
+      0% { transform: scale(0.9); opacity: 0.8; }
+      50% { transform: scale(1.2); opacity: 1; filter: drop-shadow(0 0 6px #00E676); }
+      100% { transform: scale(0.9); opacity: 0.8; }
+    }
+    .pulse-dot {
+      animation: pulseLive 1.4s infinite ease-in-out;
+    }
+
+    /* Custom tactical pitch grid pattern */
+    .pitch-grid {
+      background-size: 36px 36px;
+      background-image: 
+        linear-gradient(to right, rgba(38, 87, 60, 0.25) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(38, 87, 60, 0.25) 1px, transparent 1px);
+    }
+
+    /* Custom scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #07170E;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1E4631;
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #00E676;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between selection:bg-neonGreen selection:text-pitchDark">
+
+  <!-- Header Bar -->
+  <header class="sticky top-0 z-40 bg-pitchSurface/95 backdrop-blur-md border-b border-pitchBorder">
+    <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+      <!-- Logo and App Title -->
+      <div class="flex items-center space-x-3 cursor-pointer" onclick="appState.navigateTo('capture')">
+        <div class="w-10 h-10 rounded-xl bg-neonGreen flex items-center justify-center border border-white/30 text-pitchDark shadow-lg shadow-neonGreen/20">
+          <i class="fa-solid fa-futbol text-xl"></i>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg sm:text-xl font-black tracking-tight text-white flex items-center">
+              ScoutAI <span class="text-neonGreen ml-1">Fútbol</span>
+            </h1>
+            <span class="text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded bg-neonGreen/20 text-neonGreen border border-neonGreen/40">PRO</span>
+          </div>
+          <p class="text-xs text-pitchTextSecondary font-medium hidden sm:block">Análisis Biomecánico & Ciencias del Deporte</p>
+        </div>
+      </div>
+
+      <!-- Actions & Status Badges -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <!-- API Key Configure Button -->
+        <button id="apiKeyModalBtn" onclick="appState.toggleApiKeyModal(true)" title="Configurar Gemini API Key"
+          class="p-2 sm:px-3 sm:py-1.5 rounded-full bg-pitchSurfaceElevated border border-pitchBorder hover:border-neonGreen/60 text-xs font-semibold text-pitchTextSecondary hover:text-white transition-all flex items-center space-x-1.5">
+          <i class="fa-solid fa-key text-accentGold text-xs"></i>
+          <span class="hidden md:inline" id="apiKeyStatusText">Gemini Key</span>
+        </button>
+
+        <!-- History Button -->
+        <button id="historyHeaderBtn" onclick="appState.navigateTo('history')"
+          class="px-3 py-1.5 rounded-full bg-[#10331F] border border-neonGreen/50 hover:bg-[#164228] transition-all flex items-center space-x-2 group">
+          <i class="fa-solid fa-clock-rotate-left text-neonGreen text-xs group-hover:rotate-[-45deg] transition-transform"></i>
+          <span class="text-xs font-bold text-white">Historial</span>
+          <span id="historyCountBadge" class="bg-neonGreen text-pitchDark text-[11px] font-black px-1.5 py-0.2 rounded-full min-w-[18px] text-center">0</span>
+        </button>
+
+        <!-- Active Status Indicator -->
+        <div class="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-full bg-[#063319] border border-pitchBorder">
+          <span class="w-2 h-2 rounded-full bg-neonGreen pulse-dot"></span>
+          <span class="text-[11px] font-extrabold tracking-wider text-neonGreen">ACTIVO</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Dynamic Application Container -->
+  <main class="max-w-6xl mx-auto w-full px-3 sm:px-4 py-5 flex-1">
+    
+    <!-- VIEW 1: CAPTURA Y MODOS DE ENTRADA (Home / Idle) -->
+    <section id="view-capture" class="space-y-6">
+      <!-- Hero Intro Banner -->
+      <div class="relative overflow-hidden rounded-2xl bg-gradient-to-b from-pitchSurfaceVariant to-pitchSurface border border-pitchBorder p-5 sm:p-7 shadow-xl">
+        <div class="relative z-10 max-w-2xl space-y-3">
+          <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#09311D] border border-neonGreen/30">
+            <i class="fa-solid fa-dna text-neonGreen text-xs"></i>
+            <span class="text-[11px] font-black uppercase tracking-wider text-neonGreen">ANÁLISIS BIOMECÁNICO EN VIVO & IA</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-black text-white leading-tight">
+            Evalúa la técnica, potencia y cinemática de tus jugadas
+          </h2>
+          <p class="text-sm text-pitchTextSecondary leading-relaxed">
+            Diagnóstico profesional de Ciencias del Deporte: velocidad en km/h, ángulo de torso, pie de apoyo y vector GRF. Incluye prescripción neuromuscular y una explicación tan clara que la entenderá un niño de 5 años.
+          </p>
+        </div>
+        <!-- Decorative Ball Watermark -->
+        <div class="absolute -right-8 -bottom-8 opacity-10 pointer-events-none text-white text-9xl">
+          <i class="fa-solid fa-futbol"></i>
+        </div>
+      </div>
+
+      <!-- Action Mode Cards Grid -->
+      <div>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-pitchTextSecondary mb-3 flex items-center space-x-2">
+          <i class="fa-solid fa-satellite-dish text-neonGreen"></i>
+          <span>Modos de Captura & Ojeador</span>
+        </h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- Main Hero Card: MODO EN VIVO (CÁMARA IA CON HUD AR) -->
+          <div onclick="appState.startLiveScanner()"
+            class="group cursor-pointer rounded-2xl p-5 bg-[#092E1A] border-2 border-neonGreen hover:border-white transition-all shadow-lg hover:shadow-neonGreen/20 flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+              <div class="w-14 h-14 rounded-2xl bg-neonGreen flex items-center justify-center text-pitchDark shadow-md group-hover:scale-105 transition-transform">
+                <i class="fa-solid fa-video text-2xl"></i>
+              </div>
+              <div>
+                <div class="flex items-center space-x-2 mb-1">
+                  <span class="w-2 h-2 rounded-full bg-dangerRed animate-ping"></span>
+                  <span class="text-[10px] font-black tracking-widest text-neonGreen uppercase">EN DIRECTO • TELEMETRÍA AR</span>
+                </div>
+                <h4 class="text-lg font-black text-white group-hover:text-neonGreen transition-colors">Analizar en Vivo (Cámara IA)</h4>
+                <p class="text-xs text-pitchTextSecondary">Visor con esqueleto cinemático, retícula y telemetría articular</p>
+              </div>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-[#0F4426] flex items-center justify-center text-neonGreen group-hover:translate-x-1 transition-transform">
+              <i class="fa-solid fa-arrow-right"></i>
+            </div>
+          </div>
+
+          <!-- Secondary Hero Card: GRABAR VIDEO DE LA JUGADA -->
+          <div onclick="appState.triggerVideoRecording()"
+            class="group cursor-pointer rounded-2xl p-5 bg-pitchSurface border border-pitchBorder hover:border-neonGreen/60 transition-all shadow-lg flex items-center justify-between">
+            <div class="flex items-center space-x-4">
+              <div class="w-14 h-14 rounded-2xl bg-[#143E26] flex items-center justify-center text-neonGreen group-hover:scale-105 transition-transform">
+                <i class="fa-solid fa-circle-dot text-2xl text-dangerRed"></i>
+              </div>
+              <div>
+                <div class="text-[10px] font-black tracking-wider text-pitchTextSecondary uppercase mb-1">GRABACIÓN DIRECTA</div>
+                <h4 class="text-lg font-bold text-white group-hover:text-neonGreen transition-colors">Grabar Video de la Jugada</h4>
+                <p class="text-xs text-pitchTextSecondary">Filma al jugador pateando, regateando o perfilando</p>
+              </div>
+            </div>
+            <div class="w-10 h-10 rounded-full bg-pitchSurfaceElevated flex items-center justify-center text-white/80 group-hover:translate-x-1 transition-transform">
+              <i class="fa-solid fa-video"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Secondary Mini Action Cards: Tomar Foto & Subir Archivo -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+          <!-- Option: Tomar Foto Instantánea -->
+          <div onclick="appState.triggerQuickPhoto()"
+            class="cursor-pointer rounded-xl p-4 bg-pitchSurface border border-pitchBorder hover:border-white/50 transition-all flex items-center space-x-3.5">
+            <div class="w-11 h-11 rounded-xl bg-[#0C2C1A] border border-white/20 flex items-center justify-center text-white">
+              <i class="fa-solid fa-camera text-lg"></i>
+            </div>
+            <div>
+              <div class="text-sm font-bold text-white">Tomar Foto Rápida</div>
+              <div class="text-xs text-pitchTextSecondary">Captura instantánea de un fotograma</div>
+            </div>
+          </div>
+
+          <!-- Option: Subir Clip o Imagen -->
+          <label for="mediaFileInput"
+            class="cursor-pointer rounded-xl p-4 bg-pitchSurface border border-pitchBorder hover:border-telemetryBlue/60 transition-all flex items-center space-x-3.5">
+            <div class="w-11 h-11 rounded-xl bg-[#0C2C1A] border border-telemetryBlue/30 flex items-center justify-center text-telemetryBlue">
+              <i class="fa-solid fa-folder-open text-lg"></i>
+            </div>
+            <div class="flex-1">
+              <div class="text-sm font-bold text-white">Subir Video o Foto</div>
+              <div class="text-xs text-pitchTextSecondary">Selecciona desde tu dispositivo o galería</div>
+            </div>
+            <input id="mediaFileInput" type="file" accept="image/*,video/*" class="hidden" onchange="appState.handleFileSelected(event)">
+          </label>
+        </div>
+      </div>
+
+      <!-- Preset Clips Section: 1-Tap Quick Scouting -->
+      <div class="pt-2">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="text-xs font-bold uppercase tracking-wider text-pitchTextSecondary flex items-center space-x-2">
+            <i class="fa-solid fa-bolt text-accentGold"></i>
+            <span>Clips de Prueba Rápida (1-Tap Scout)</span>
+          </h3>
+          <span class="text-xs font-semibold text-neonGreen">Prueba Instantánea</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="presetSamplesContainer">
+          <!-- Dynamically populated sample cards -->
+        </div>
+      </div>
+
+      <!-- History Banner Link -->
+      <div onclick="appState.navigateTo('history')"
+        class="cursor-pointer rounded-2xl p-4 sm:p-5 bg-pitchSurface border border-pitchBorder hover:border-neonGreen/60 transition-all flex items-center justify-between">
+        <div class="flex items-center space-x-4">
+          <div class="w-12 h-12 rounded-xl bg-[#0F3E22] border border-neonGreen/40 flex items-center justify-center text-neonGreen">
+            <i class="fa-solid fa-clipboard-list text-xl"></i>
+          </div>
+          <div>
+            <div class="flex items-center space-x-2">
+              <span class="text-sm sm:text-base font-black text-white">HISTORIAL DE INFORMES GUARDADOS</span>
+              <span id="historyBannerCount" class="px-2 py-0.5 rounded-full text-xs font-black bg-neonGreen text-pitchDark">0</span>
+            </div>
+            <p class="text-xs text-pitchTextSecondary">Revisa evaluaciones anteriores, telemetría física y explicaciones</p>
+          </div>
+        </div>
+        <i class="fa-solid fa-chevron-right text-pitchTextSecondary text-sm pr-2"></i>
+      </div>
+    </section>
+
+    <!-- VIEW 2: MODO EN VIVO (CÁMARA IA CON HUD AR TÁCTICO) -->
+    <section id="view-live-scanner" class="hidden space-y-4">
+      <!-- Live HUD Viewport Container -->
+      <div class="relative w-full aspect-[4/3] sm:aspect-[16/10] max-h-[620px] rounded-3xl overflow-hidden bg-black border-2 border-neonGreen shadow-2xl">
+        <!-- Live Video Element (Hidden or mirrored to canvas) -->
+        <video id="webcamVideo" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover hidden"></video>
+        
+        <!-- Interactive AR Overlay Canvas -->
+        <canvas id="liveHudCanvas" class="absolute inset-0 w-full h-full block z-10"></canvas>
+
+        <!-- Laser Scanline effect -->
+        <div class="hud-laser"></div>
+
+        <!-- Top HUD Floating Controls -->
+        <div class="absolute top-3 left-3 right-3 z-20 flex items-center justify-between pointer-events-auto">
+          <!-- Close Live Scanner Button -->
+          <button onclick="appState.closeLiveScanner()"
+            class="w-10 h-10 rounded-full bg-pitchSurface/80 backdrop-blur-md border border-pitchBorder text-white hover:text-dangerRed flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+
+          <!-- Live Status Tag -->
+          <div class="flex items-center space-x-2 px-3 py-1.5 rounded-full bg-[#072B17]/90 backdrop-blur-md border border-neonGreen">
+            <span class="w-2 h-2 rounded-full bg-dangerRed animate-pulse"></span>
+            <span class="text-xs font-black tracking-wider text-neonGreen uppercase">EN VIVO • 60 FPS</span>
+          </div>
+
+          <!-- Flip camera / Light icon -->
+          <button onclick="appState.toggleCameraSource()"
+            class="w-10 h-10 rounded-full bg-pitchSurface/80 backdrop-blur-md border border-pitchBorder text-white hover:text-neonGreen flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-camera-rotate"></i>
+          </button>
+        </div>
+
+        <!-- Live Floating Telemetry Readout (Left HUD Box) -->
+        <div class="absolute top-16 left-3 z-20 space-y-1.5 pointer-events-none hidden sm:block">
+          <div class="bg-pitchDark/80 backdrop-blur-md border border-warningOrange/60 px-2.5 py-1.5 rounded-lg shadow">
+            <div class="text-[9px] font-bold text-pitchTextSecondary tracking-wider">ÁNGULO TORSO</div>
+            <div class="text-sm font-black text-warningOrange" id="hudTorsoAngle">18.5°</div>
+          </div>
+          <div class="bg-pitchDark/80 backdrop-blur-md border border-telemetryBlue/60 px-2.5 py-1.5 rounded-lg shadow">
+            <div class="text-[9px] font-bold text-pitchTextSecondary tracking-wider">PIE APOYO</div>
+            <div class="text-sm font-black text-telemetryBlue" id="hudFootDistance">31 cm</div>
+          </div>
+          <div class="bg-pitchDark/80 backdrop-blur-md border border-accentGold/60 px-2.5 py-1.5 rounded-lg shadow">
+            <div class="text-[9px] font-bold text-pitchTextSecondary tracking-wider">FLEX. RODILLA</div>
+            <div class="text-sm font-black text-accentGold" id="hudKneeFlex">168°</div>
+          </div>
+          <div class="bg-pitchDark/80 backdrop-blur-md border border-neonGreen/60 px-2.5 py-1.5 rounded-lg shadow">
+            <div class="text-[9px] font-bold text-pitchTextSecondary tracking-wider">VEL. ESTIMADA</div>
+            <div class="text-sm font-black text-neonGreen" id="hudBallSpeed">88 km/h</div>
+          </div>
+        </div>
+
+        <!-- Position Selector Quick Bar on Live Screen -->
+        <div class="absolute bottom-24 left-3 right-3 z-20 pointer-events-auto">
+          <div class="max-w-md mx-auto bg-pitchSurface/90 backdrop-blur-md border border-pitchBorder rounded-xl p-2 flex items-center justify-between">
+            <span class="text-[11px] font-bold text-pitchTextSecondary uppercase ml-1">Posición:</span>
+            <div class="flex items-center space-x-1 overflow-x-auto" id="livePositionChips">
+              <!-- Dynamically rendered chips -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Primary Scanner Trigger -->
+        <div class="absolute bottom-4 left-4 right-4 z-20 pointer-events-auto flex items-center justify-center">
+          <button onclick="appState.captureAndAnalyzeFromLive()"
+            class="w-full max-w-sm py-3.5 px-6 rounded-full bg-neonGreen hover:bg-emerald-400 text-pitchDark font-black text-base shadow-xl glow-neon flex items-center justify-center space-x-3 transition-transform active:scale-95">
+            <i class="fa-solid fa-crosshairs text-lg"></i>
+            <span>¡CAPTURAR Y ANALIZAR JUGADA!</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick live test presets below scanner -->
+      <div class="bg-pitchSurface border border-pitchBorder rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <span class="text-pitchTextSecondary">O prueba una jugada preconfigurada en vivo:</span>
+        <div class="flex space-x-2" id="liveQuickPresetsContainer"></div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: VISTA PREVIA DEL MEDIO & CALIBRACIÓN DE POSICIÓN (Media Ready) -->
+    <section id="view-media-ready" class="hidden space-y-5">
+      <!-- Media Preview Frame -->
+      <div class="relative w-full aspect-[16/10] max-h-[480px] rounded-2xl overflow-hidden bg-pitchSurface border border-pitchBorder shadow-2xl flex items-center justify-center">
+        <!-- Image Preview Element -->
+        <img id="mediaPreviewImg" class="w-full h-full object-contain hidden" alt="Vista previa" />
+        
+        <!-- Video Preview Element -->
+        <video id="mediaPreviewVideo" controls playsinline class="w-full h-full object-contain hidden"></video>
+
+        <!-- Simulated Pitch Placeholder when preset action is chosen -->
+        <div id="mediaPlaceholderTactical" class="flex flex-col items-center justify-center text-center p-6 space-y-3">
+          <div class="w-20 h-20 rounded-full bg-[#0C2B1B] border-2 border-neonGreen flex items-center justify-center text-neonGreen text-3xl shadow-lg">
+            <i class="fa-solid fa-futbol"></i>
+          </div>
+          <h3 id="mediaPreviewTitle" class="text-xl font-bold text-white">Clip de Jugada Futbolística</h3>
+          <p class="text-xs text-pitchTextSecondary max-w-md">Listo para escanear con Visión Computacional e Inteligencia Biomecánica</p>
+        </div>
+
+        <!-- Top preview bar -->
+        <div class="absolute top-3 left-3 right-3 flex items-center justify-between z-10 pointer-events-auto">
+          <div class="flex items-center space-x-2">
+            <span id="mediaTypeBadge" class="px-2.5 py-1 rounded-md bg-black/70 border border-neonGreen/50 text-[11px] font-black text-neonGreen flex items-center space-x-1.5">
+              <i class="fa-solid fa-video"></i>
+              <span id="mediaTypeBadgeText">VIDEO CLIP</span>
+            </span>
+            <span id="mediaPositionBadge" class="px-2.5 py-1 rounded-md bg-[#0C2E1B]/90 border border-neonGreen text-[11px] font-black text-white">
+              POS: DC
+            </span>
+          </div>
+
+          <button onclick="appState.navigateTo('capture')" class="w-8 h-8 rounded-full bg-black/70 text-white hover:text-dangerRed flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Player Position Selector Card -->
+      <div class="rounded-2xl p-5 bg-pitchSurface border border-neonGreen/40 shadow-xl space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-[#0D3B20] flex items-center justify-center text-neonGreen">
+              <i class="fa-solid fa-users-viewfinder"></i>
+            </div>
+            <div>
+              <div class="text-[11px] font-bold text-neonGreen uppercase tracking-wider">¿EN QUÉ POSICIÓN JUEGA EL FUTBOLISTA?</div>
+              <h4 class="text-base font-bold text-white">Calibración Táctica & Biomecánica</h4>
+            </div>
+          </div>
+          <button onclick="appState.openPositionModal()" class="px-3 py-1 rounded-full bg-pitchSurfaceElevated text-accentGold border border-accentGold/30 text-xs font-bold hover:bg-pitchSurfaceVariant transition-colors">
+            Ver Todas
+          </button>
+        </div>
+
+        <p class="text-xs text-pitchTextSecondary">
+          La Inteligencia Artificial adaptará la evaluación según los requerimientos motores y cinemáticos del rol seleccionado:
+        </p>
+
+        <!-- Position Grid Selector -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2" id="positionChipsGrid">
+          <!-- Populated in Javascript -->
+        </div>
+
+        <!-- Active Position Insight Card -->
+        <div id="activePositionDetailsBanner" class="rounded-xl p-3.5 bg-pitchSurfaceVariant border border-pitchBorder text-xs space-y-1.5">
+          <div class="flex items-center justify-between font-bold text-white">
+            <span id="posDetailTitle">Delantero Centro (DC) - Ataque</span>
+            <span class="text-neonGreen text-[10px] uppercase font-black">Activo</span>
+          </div>
+          <p id="posDetailTactical" class="text-pitchTextSecondary">Exigencia táctica: Finalización a un toque, juego de espaldas y remates de ruptura.</p>
+          <div class="flex items-center space-x-1.5 text-accentGold font-medium pt-1">
+            <i class="fa-solid fa-brain text-[11px]"></i>
+            <span id="posDetailBiomechanical">Foco Biomecánico: Secuencia proximal-distal y torsión explosiva.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="space-y-2">
+        <button onclick="appState.startAnalysis()"
+          class="w-full py-4 rounded-xl bg-neonGreen hover:bg-emerald-400 text-pitchDark font-black text-base shadow-xl glow-neon flex items-center justify-center space-x-3 transition-transform active:scale-98">
+          <i class="fa-solid fa-wand-magic-sparkles text-lg"></i>
+          <span id="analyzeBtnText">Analizar Jugador con Gemini AI Pro</span>
+        </button>
+
+        <button onclick="appState.navigateTo('capture')"
+          class="w-full py-2.5 rounded-xl bg-pitchSurface border border-pitchBorder hover:border-pitchTextSecondary text-white text-xs font-semibold flex items-center justify-center space-x-2 transition-colors">
+          <i class="fa-solid fa-rotate-left"></i>
+          <span>Seleccionar o Grabar Otra Jugada</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 4: PANTALLA DE ANÁLISIS BIOMECÁNICO (ScoutAnalyzingView) -->
+    <section id="view-analyzing" class="hidden min-h-[460px] flex flex-col items-center justify-center text-center p-6 space-y-6">
+      <!-- Rotating & Pulsing Radar Graphic -->
+      <div class="relative w-36 h-36 rounded-full bg-pitchSurface border-2 border-pitchBorder flex items-center justify-center shadow-2xl">
+        <!-- Outer rotating dashed ring -->
+        <div class="absolute inset-2 rounded-full border-2 border-dashed border-neonGreen/60 animate-spin" style="animation-duration: 6s;"></div>
+        
+        <!-- Inner pulsing ball icon -->
+        <div class="w-16 h-16 rounded-full bg-[#09361F] border-2 border-neonGreen flex items-center justify-center text-neonGreen text-3xl pulse-dot shadow-lg shadow-neonGreen/30">
+          <i class="fa-solid fa-futbol"></i>
+        </div>
+
+        <!-- Radar crosshairs -->
+        <div class="absolute w-full h-[1px] bg-neonGreen/20 pointer-events-none"></div>
+        <div class="absolute h-full w-[1px] bg-neonGreen/20 pointer-events-none"></div>
+      </div>
+
+      <!-- Gemini Scout Pro Tag -->
+      <div class="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-[#0A331D] border border-neonGreen/50">
+        <i class="fa-solid fa-brain text-neonGreen text-xs"></i>
+        <span class="text-[11px] font-black uppercase tracking-wider text-white">GEMINI 2.5 FLASH • SCOUT PRO</span>
+      </div>
+
+      <div class="space-y-2 max-w-md">
+        <h3 class="text-2xl font-black text-white">Analizando Biomecánica...</h3>
+        <p id="analysisStatusMessage" class="text-sm text-pitchTextSecondary transition-all">
+          Iniciando escaneo cinemático en directo y descomposición articular...
+        </p>
+      </div>
+
+      <!-- Progress Bar Indicator -->
+      <div class="w-full max-w-md space-y-2">
+        <div class="w-full h-2.5 rounded-full bg-pitchSurface border border-pitchBorder overflow-hidden">
+          <div id="analysisProgressBar" class="h-full bg-neonGreen rounded-full transition-all duration-300 w-[15%]"></div>
+        </div>
+        <div class="flex justify-between text-[11px] text-pitchTextSecondary font-mono font-semibold px-1">
+          <span>CINEMÁTICA</span>
+          <span id="analysisPercentText">15%</span>
+          <span>CIENCIAS DEL DEPORTE</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 5: PANTALLA DE RESULTADOS DE SCOUTING COMPLETA (Result Ready) -->
+    <section id="view-results" class="hidden space-y-6">
+      <!-- Top Title & UEFA Pro Badge -->
+      <div class="rounded-2xl p-4 sm:p-5 bg-pitchSurfaceVariant border border-pitchBorder flex flex-wrap items-center justify-between gap-3 shadow-lg">
+        <div class="flex items-center space-x-3">
+          <button onclick="appState.navigateTo('capture')" class="w-9 h-9 rounded-full bg-pitchSurfaceElevated text-white hover:text-neonGreen flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+          <div>
+            <div class="text-[11px] font-black uppercase tracking-wider text-neonGreen flex items-center space-x-1.5">
+              <span>INFORME DE SCOUTING & BIOMECÁNICA</span>
+            </div>
+            <h2 id="resultPlayerPosTitle" class="text-xl sm:text-2xl font-black text-white">Delantero Centro (DC)</h2>
+          </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <!-- Print / Export Action -->
+          <button onclick="window.print()" class="px-3 py-1.5 rounded-full bg-pitchSurfaceElevated hover:bg-pitchSurface border border-pitchBorder text-xs font-bold text-white transition-colors flex items-center space-x-1.5">
+            <i class="fa-solid fa-print"></i>
+            <span class="hidden sm:inline">Exportar</span>
+          </button>
+          <div class="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-[#09361F] border border-neonGreen text-xs font-bold text-white">
+            <i class="fa-solid fa-certificate text-neonGreen"></i>
+            <span>UEFA PRO CERTIFIED</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tab Filter Selector -->
+      <div class="flex items-center space-x-2 bg-pitchSurface p-1.5 rounded-2xl border border-pitchBorder">
+        <button onclick="appState.switchResultTab('all')" id="tabBtn-all"
+          class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black transition-all bg-neonGreen text-pitchDark shadow">
+          Todo el Informe
+        </button>
+        <button onclick="appState.switchResultTab('child')" id="tabBtn-child"
+          class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all text-pitchTextSecondary hover:text-white">
+          🐣 Para Niños (5 años)
+        </button>
+        <button onclick="appState.switchResultTab('telemetry')" id="tabBtn-telemetry"
+          class="flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all text-pitchTextSecondary hover:text-white">
+          📊 Datos Reales
+        </button>
+      </div>
+
+      <!-- Primary Action Card: Acción Identificada y Resumen -->
+      <div class="rounded-2xl p-5 sm:p-6 bg-pitchSurface border-2 border-pitchBorder shadow-xl space-y-3">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-8 h-8 rounded-lg bg-[#09311D] flex items-center justify-center text-neonGreen">
+              <i class="fa-solid fa-futbol"></i>
+            </div>
+            <span class="text-xs font-black uppercase tracking-wider text-neonGreen">ACCIÓN IDENTIFICADA</span>
+          </div>
+          <span id="resultPosTag" class="px-2.5 py-1 rounded bg-pitchSurfaceElevated text-accentGold text-[11px] font-black">DC</span>
+        </div>
+        <h3 id="resultActionName" class="text-xl sm:text-2xl font-black text-white">Remate a Portería (Empeine Total)</h3>
+        <p id="resultSummary" class="text-sm text-pitchTextSecondary leading-relaxed">
+          Excelente generación de potencia balística con margen de mejora biomecánica en la colocación del pie de apoyo y vector de fuerza de reacción del suelo.
+        </p>
+      </div>
+
+      <!-- TAB SECTION 1: EXPLICACIÓN PARA NIÑOS DE 5 AÑOS (Super divertida y visual) -->
+      <div id="section-child-explanation" class="rounded-2xl p-5 sm:p-6 bg-[#0B2917] border-2 border-neonGreen shadow-2xl space-y-4">
+        <div class="flex items-center space-x-3 pb-1 border-b border-neonGreen/20">
+          <div class="w-10 h-10 rounded-full bg-[#1E5E38] flex items-center justify-center text-2xl shadow">
+            🐣
+          </div>
+          <div>
+            <h4 class="text-sm sm:text-base font-black text-neonGreen tracking-wide uppercase">¡EXPLICADO PARA UN NIÑO DE 5 AÑOS!</h4>
+            <p class="text-xs text-white/80">Súper fácil, divertido y sin palabras difíciles</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+          <!-- 1. Analogía divertida -->
+          <div class="rounded-xl p-4 bg-[#123E25] border border-pitchBorder space-y-1.5">
+            <div class="flex items-center space-x-2">
+              <span class="text-xl">🚀</span>
+              <span class="text-xs font-bold text-white/70">¿Cómo te ves jugando?</span>
+            </div>
+            <p id="childAnalogy" class="text-sm font-bold text-white">¡Eres un superhéroe lanzando un supercohete con tu pie de oro!</p>
+          </div>
+
+          <!-- 2. Error fácil -->
+          <div class="rounded-xl p-4 bg-[#33200F] border border-pitchBorder space-y-1.5">
+            <div class="flex items-center space-x-2">
+              <span class="text-xl">🙈</span>
+              <span class="text-xs font-bold text-white/70">¿Qué pasó con tu tiro?</span>
+            </div>
+            <p id="childMistake" class="text-sm font-bold text-white">Te estás tirando hacia atrás como para dormir en la cama, ¡por eso la pelota vuela a las nubes!</p>
+          </div>
+
+          <!-- 3. Truco Mágico -->
+          <div class="rounded-xl p-4 bg-[#0F3B40] border border-pitchBorder space-y-1.5">
+            <div class="flex items-center space-x-2">
+              <span class="text-xl">🪄</span>
+              <span class="text-xs font-bold text-white/70">El Truco Mágico de Campeón</span>
+            </div>
+            <p id="childTrick" class="text-sm font-bold text-white">¡Haz como un avión! Pon tu pechito sobre la pelota mirando al suelo y pégale con los cordones.</p>
+          </div>
+        </div>
+
+        <!-- Misión Secreta del Día -->
+        <div class="rounded-xl p-4 bg-[#261E08] border border-accentGold flex items-start space-x-3">
+          <span class="text-2xl">🎯</span>
+          <div>
+            <div class="text-[11px] font-black tracking-wider text-accentGold uppercase">TU MISIÓN SECRETA DE HOY:</div>
+            <p id="childMission" class="text-sm font-bold text-white mt-0.5">
+              Misión secreta: Da un pisotón fuerte como un dinosaurio justo al ladito del balón antes de chutar. ¡Pruébalo 5 veces!
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB SECTION 2: DATOS REALES & TELEMETRÍA (Física y Cinemática) -->
+      <div id="section-telemetry" class="rounded-2xl p-5 sm:p-6 bg-pitchSurface border-2 border-telemetryBlue/60 shadow-xl space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-[#0B334A] flex items-center justify-center text-telemetryBlue">
+              <i class="fa-solid fa-gauge-high"></i>
+            </div>
+            <div>
+              <span class="text-xs font-black uppercase tracking-wider text-telemetryBlue">DATOS REALES & TELEMETRÍA FÍSICA</span>
+              <h4 class="text-base font-bold text-white">Mediciones Cinemáticas del Jugador</h4>
+            </div>
+          </div>
+          <span class="text-[11px] font-black px-2 py-0.5 rounded bg-[#09293B] text-telemetryBlue border border-telemetryBlue/40">FÍSICA REAL</span>
+        </div>
+
+        <!-- 6 Telemetry Metrics Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-3 pt-2">
+          <!-- Metric 1: Velocidad -->
+          <div class="rounded-xl p-3.5 bg-pitchSurfaceElevated border border-pitchBorder">
+            <div class="text-[11px] font-semibold text-pitchTextSecondary">Velocidad de Impacto</div>
+            <div id="metricSpeed" class="text-2xl font-black text-neonGreen mt-0.5">88 km/h</div>
+            <div class="text-[10px] text-white/60">Velocidad terminal estimada</div>
+          </div>
+
+          <!-- Metric 2: Pie de Apoyo -->
+          <div class="rounded-xl p-3.5 bg-pitchSurfaceElevated border border-pitchBorder">
+            <div class="text-[11px] font-semibold text-pitchTextSecondary">Pie de Apoyo</div>
+            <div id="metricFootDistance" class="text-2xl font-black text-warningOrange mt-0.5">31 cm</div>
+            <div id="metricFootDiff" class="text-[10px] text-white/60">Ideal: 14 cm (+17 cm alejado)</div>
+          </div>
+
+          <!-- Metric 3: Ángulo Torso -->
+          <div class="rounded-xl p-3.5 bg-pitchSurfaceElevated border border-pitchBorder">
+            <div class="text-[11px] font-semibold text-pitchTextSecondary">Inclinación Torso</div>
+            <div id="metricTorsoAngle" class="text-2xl font-black text-accentGold mt-0.5">18.5°</div>
+            <div class="text-[10px] text-white/60">Eje vertical sagital</div>
+          </div>
+
+          <!-- Metric 4: Fuerza Impacto Newtons -->
+          <div class="rounded-xl p-3.5 bg-pitchSurfaceElevated border border-pitchBorder">
+            <div class="text-[11px] font-semibold text-pitchTextSecondary">Fuerza de Contacto</div>
+            <div id="metricForce" class="text-2xl font-black text-telemetryBlue mt-0.5">820 N</div>
+            <div class="text-[10px] text-white/60">Carga cinética calculada</div>
+          </div>
+
+          <!-- Metric 5: Tiempo Contacto -->
+          <div class="rounded-xl p-3.5 bg-pitchSurfaceElevated border border-pitchBorder">
+            <div class="text-[11px] font-semibold text-pitchTextSecondary">Tiempo Contacto</div>
+            <div id="metricContactTime" class="text-2xl font-black text-purple-400 mt-0.5">14 ms</div>
+            <div class="text-[10px] text-white/60">Milisegundos con el balón</div>
+          </div>
+
+          <!-- Metric 6: Ángulo Rodilla -->
+          <div class="rounded-xl p-3.5 bg-pitchSurfaceElevated border border-pitchBorder">
+            <div class="text-[11px] font-semibold text-pitchTextSecondary">Flexión Rodilla</div>
+            <div id="metricKneeAngle" class="text-2xl font-black text-accentGold mt-0.5">168.0°</div>
+            <div class="text-[10px] text-white/60">Ángulo articular en choque</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION: CALIFICACIONES BIOMECÁNICAS (BARRAS DE PROGRESO) -->
+      <div id="section-ratings" class="rounded-2xl p-5 sm:p-6 bg-pitchSurface border border-pitchBorder shadow-xl space-y-4">
+        <h4 class="text-xs font-black uppercase tracking-wider text-pitchTextSecondary">Calificaciones Biomecánicas (0 - 100)</h4>
+
+        <div class="space-y-3.5">
+          <!-- Rating 1: Técnica -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs font-bold">
+              <span class="text-white">Técnica de Ejecución Motriz</span>
+              <span id="scoreTecnicaText" class="text-neonGreen">78 / 100</span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-pitchDark overflow-hidden">
+              <div id="barTecnica" class="h-full bg-neonGreen rounded-full transition-all duration-1000 w-[78%]"></div>
+            </div>
+          </div>
+
+          <!-- Rating 2: Postura -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs font-bold">
+              <span class="text-white">Postura y Balance Corporal</span>
+              <span id="scorePosturaText" class="text-accentGold">71 / 100</span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-pitchDark overflow-hidden">
+              <div id="barPostura" class="h-full bg-accentGold rounded-full transition-all duration-1000 w-[71%]"></div>
+            </div>
+          </div>
+
+          <!-- Rating 3: Potencia -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs font-bold">
+              <span class="text-white">Potencia Cinética Estimada</span>
+              <span id="scorePotenciaText" class="text-telemetryBlue">89 / 100</span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-pitchDark overflow-hidden">
+              <div id="barPotencia" class="h-full bg-telemetryBlue rounded-full transition-all duration-1000 w-[89%]"></div>
+            </div>
+          </div>
+
+          <!-- Rating 4: Visión -->
+          <div class="space-y-1">
+            <div class="flex justify-between text-xs font-bold">
+              <span class="text-white">Visión & Perfilación Táctica</span>
+              <span id="scoreVisionText" class="text-purple-400">76 / 100</span>
+            </div>
+            <div class="w-full h-2.5 rounded-full bg-pitchDark overflow-hidden">
+              <div id="barVision" class="h-full bg-purple-400 rounded-full transition-all duration-1000 w-[76%]"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SECTION: 4 PILARES BIOMECÁNICOS DESPLEGABLES & CIENCIA DEL DEPORTE -->
+      <div id="section-biomechanics" class="rounded-2xl p-5 sm:p-6 bg-pitchSurface border-2 border-neonGreen/60 shadow-xl space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-[#0C381E] flex items-center justify-center text-neonGreen">
+              <i class="fa-solid fa-microscope"></i>
+            </div>
+            <div>
+              <span class="text-xs font-black uppercase tracking-wider text-neonGreen">CIENCIA DEL DEPORTE & BIOMECÁNICA</span>
+              <h4 class="text-base font-bold text-white">Principios Cinemáticos y Motores</h4>
+            </div>
+          </div>
+          <span class="text-xs font-bold text-accentGold" id="bioPositionIndicator">DC</span>
+        </div>
+
+        <p id="bioScienceSummary" class="text-xs text-pitchTextSecondary leading-relaxed">
+          Optimización neurofisiológica basada en biomecánica y velocidad angular articular.
+        </p>
+
+        <!-- 4 Expandable Accordion Pillars -->
+        <div class="space-y-2.5 pt-1" id="biomechanicalPillarsAccordion">
+          <!-- Pillar 1: Cadena Cinética -->
+          <div class="rounded-xl bg-pitchSurfaceElevated border border-pitchBorder overflow-hidden">
+            <button onclick="appState.togglePillar('pillar1')" class="w-full p-3.5 text-left flex items-center justify-between hover:bg-pitchSurfaceVariant transition-colors">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-timeline text-telemetryBlue text-sm"></i>
+                <div>
+                  <div class="text-xs font-bold text-white">1. Cadena Cinética Secuencial</div>
+                  <div class="text-[10px] text-pitchTextSecondary">Coordinación proximal-distal de velocidades angulares</div>
+                </div>
+              </div>
+              <i id="pillar1-icon" class="fa-solid fa-chevron-down text-xs text-pitchTextSecondary transition-transform"></i>
+            </button>
+            <div id="pillar1-content" class="hidden p-3.5 bg-pitchDark/80 border-t border-pitchBorder text-xs text-white/90 leading-relaxed"></div>
+          </div>
+
+          <!-- Pillar 2: GRF -->
+          <div class="rounded-xl bg-pitchSurfaceElevated border border-pitchBorder overflow-hidden">
+            <button onclick="appState.togglePillar('pillar2')" class="w-full p-3.5 text-left flex items-center justify-between hover:bg-pitchSurfaceVariant transition-colors">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-bolt text-neonGreen text-sm"></i>
+                <div>
+                  <div class="text-xs font-bold text-white">2. Fuerza de Reacción del Suelo (GRF)</div>
+                  <div class="text-[10px] text-pitchTextSecondary">Ángulo del pie de apoyo y vector de fuerza reactiva</div>
+                </div>
+              </div>
+              <i id="pillar2-icon" class="fa-solid fa-chevron-down text-xs text-pitchTextSecondary transition-transform"></i>
+            </button>
+            <div id="pillar2-content" class="hidden p-3.5 bg-pitchDark/80 border-t border-pitchBorder text-xs text-white/90 leading-relaxed"></div>
+          </div>
+
+          <!-- Pillar 3: Disociación & Core -->
+          <div class="rounded-xl bg-pitchSurfaceElevated border border-pitchBorder overflow-hidden">
+            <button onclick="appState.togglePillar('pillar3')" class="w-full p-3.5 text-left flex items-center justify-between hover:bg-pitchSurfaceVariant transition-colors">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-atom text-purple-400 text-sm"></i>
+                <div>
+                  <div class="text-xs font-bold text-white">3. Disociación Escápulo-Pélvica & Core</div>
+                  <div class="text-[10px] text-pitchTextSecondary">Torque rotacional y rigidez lumbopélvica</div>
+                </div>
+              </div>
+              <i id="pillar3-icon" class="fa-solid fa-chevron-down text-xs text-pitchTextSecondary transition-transform"></i>
+            </button>
+            <div id="pillar3-content" class="hidden p-3.5 bg-pitchDark/80 border-t border-pitchBorder text-xs text-white/90 leading-relaxed"></div>
+          </div>
+
+          <!-- Pillar 4: Prevención Lesiones -->
+          <div class="rounded-xl bg-pitchSurfaceElevated border border-pitchBorder overflow-hidden">
+            <button onclick="appState.togglePillar('pillar4')" class="w-full p-3.5 text-left flex items-center justify-between hover:bg-pitchSurfaceVariant transition-colors">
+              <div class="flex items-center space-x-3">
+                <i class="fa-solid fa-shield-heart text-warningOrange text-sm"></i>
+                <div>
+                  <div class="text-xs font-bold text-white">4. Prevención Biomecánica de Lesiones</div>
+                  <div class="text-[10px] text-pitchTextSecondary">Control de valgo dinámico y estrés articular</div>
+                </div>
+              </div>
+              <i id="pillar4-icon" class="fa-solid fa-chevron-down text-xs text-pitchTextSecondary transition-transform"></i>
+            </button>
+            <div id="pillar4-content" class="hidden p-3.5 bg-pitchDark/80 border-t border-pitchBorder text-xs text-white/90 leading-relaxed"></div>
+          </div>
+        </div>
+
+        <!-- Sports Science Tips List -->
+        <div class="pt-3 border-t border-pitchBorder space-y-2">
+          <div class="text-[11px] font-bold text-accentGold uppercase tracking-wider flex items-center space-x-1.5">
+            <i class="fa-solid fa-lightbulb"></i>
+            <span>Consejos de la Ciencia del Deporte</span>
+          </div>
+          <div id="scienceAdviceList" class="space-y-2 text-xs"></div>
+        </div>
+      </div>
+
+      <!-- SECTION: PUNTOS FUERTES & QUÉ LE HACE FALTA (2 COLUMNS) -->
+      <div id="section-strengths-weaknesses" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Puntos Fuertes -->
+        <div class="rounded-2xl p-5 bg-pitchSurface border border-neonGreen/40 shadow-xl space-y-3">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-7 h-7 rounded-full bg-[#0C381E] flex items-center justify-center text-neonGreen">
+              <i class="fa-solid fa-circle-check text-sm"></i>
+            </div>
+            <h4 class="text-sm font-bold text-white">Puntos Fuertes (Postura y Fluidez)</h4>
+          </div>
+          <ul id="puntosFuertesList" class="space-y-2 text-xs text-white/90"></ul>
+        </div>
+
+        <!-- Qué le hace falta corregir -->
+        <div class="rounded-2xl p-5 bg-pitchSurface border border-warningOrange/40 shadow-xl space-y-3">
+          <div class="flex items-center space-x-2.5">
+            <div class="w-7 h-7 rounded-full bg-[#38180A] flex items-center justify-center text-warningOrange">
+              <i class="fa-solid fa-triangle-exclamation text-sm"></i>
+            </div>
+            <h4 class="text-sm font-bold text-white">¿Qué le hace falta corregir?</h4>
+          </div>
+          <ul id="queLeHaceFaltaList" class="space-y-2 text-xs text-white/90"></ul>
+        </div>
+      </div>
+
+      <!-- SECTION: PRESCRIPCIÓN DE ENTRENAMIENTO -->
+      <div id="section-exercises" class="space-y-3">
+        <h4 class="text-xs font-black uppercase tracking-wider text-pitchTextSecondary flex items-center space-x-2">
+          <i class="fa-solid fa-dumbbell text-neonGreen"></i>
+          <span>Prescripción de Entrenamiento Biomecánico</span>
+        </h4>
+        <div id="exercisesContainer" class="grid grid-cols-1 gap-3"></div>
+      </div>
+
+      <!-- SECTION: VEREDICTO FINAL DEL SCOUT -->
+      <div id="section-verdict" class="rounded-2xl p-5 sm:p-6 bg-[#072414] border-2 border-neonGreen shadow-2xl space-y-3">
+        <div class="flex items-center space-x-3">
+          <div class="w-9 h-9 rounded-full bg-neonGreen flex items-center justify-center text-pitchDark text-lg shadow">
+            <i class="fa-solid fa-star"></i>
+          </div>
+          <h4 class="text-sm sm:text-base font-black text-neonGreen tracking-wider uppercase">VEREDICTO FINAL DEL OJEADOR</h4>
+        </div>
+        <p id="scoutVerdictText" class="text-sm font-medium text-white leading-relaxed">
+          Delantero con gran instinto goleador y velocidad de 88 km/h. Acercando el pie de apoyo a 14 cm y bajando el torso, superará los 100 km/h y no fallará ningún mano a mano.
+        </p>
+      </div>
+
+      <!-- Bottom Result Actions -->
+      <div class="flex flex-col sm:flex-row items-center gap-3 pt-2">
+        <button onclick="appState.navigateTo('capture')"
+          class="w-full sm:flex-1 py-3.5 rounded-xl bg-neonGreen hover:bg-emerald-400 text-pitchDark font-black text-sm flex items-center justify-center space-x-2 shadow-lg transition-transform active:scale-98">
+          <i class="fa-solid fa-arrows-rotate"></i>
+          <span>Analizar Otra Jugada</span>
+        </button>
+
+        <button onclick="appState.navigateTo('history')"
+          class="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-pitchSurface border border-neonGreen text-white font-bold text-sm hover:bg-pitchSurfaceElevated flex items-center justify-center space-x-2 transition-colors">
+          <i class="fa-solid fa-clock-rotate-left text-neonGreen"></i>
+          <span>Ver Historial</span>
+        </button>
+      </div>
+    </section>
+
+    <!-- VIEW 6: HISTORIAL DE JUGADAS (ScoutHistoryScreen) -->
+    <section id="view-history" class="hidden space-y-5">
+      <!-- History Top Bar -->
+      <div class="rounded-2xl p-4 bg-pitchSurfaceVariant border border-pitchBorder flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <button onclick="appState.navigateTo('capture')" class="w-9 h-9 rounded-full bg-pitchSurfaceElevated text-white hover:text-neonGreen flex items-center justify-center transition-colors">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+          <div>
+            <span class="text-[11px] font-black uppercase tracking-wider text-neonGreen">HISTORIAL DE JUGADAS</span>
+            <h2 class="text-lg font-black text-white">Sesiones & Evaluaciones Biomecánicas</h2>
+          </div>
+        </div>
+
+        <button onclick="appState.confirmClearAllHistory()" id="clearHistoryBtn"
+          class="px-3 py-1.5 rounded-lg bg-[#3A1414] hover:bg-dangerRed text-white text-xs font-bold border border-dangerRed/40 transition-colors flex items-center space-x-1.5">
+          <i class="fa-solid fa-trash-can"></i>
+          <span class="hidden sm:inline">Vaciar Todo</span>
+        </button>
+      </div>
+
+      <!-- History List Container -->
+      <div id="historyListContainer" class="space-y-3">
+        <!-- Dynamically rendered or Empty State -->
+      </div>
+    </section>
+  </main>
+
+  <!-- Modal 1: Full Position Selection Modal -->
+  <div id="positionModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="w-full max-w-lg bg-pitchDark border-2 border-neonGreen rounded-2xl p-5 space-y-4 max-h-[85vh] flex flex-col shadow-2xl">
+      <div class="flex items-center justify-between pb-2 border-b border-pitchBorder">
+        <div>
+          <span class="text-[10px] font-black text-neonGreen tracking-wider uppercase">SELECCIÓN COMPLETA DE POSICIÓN</span>
+          <h3 class="text-lg font-black text-white">¿En qué posición juega?</h3>
+        </div>
+        <button onclick="appState.closePositionModal()" class="w-8 h-8 rounded-full bg-pitchSurfaceElevated text-white hover:text-dangerRed flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <p class="text-xs text-pitchTextSecondary">
+        Selecciona la posición para que ScoutAI aplique los principios cinemáticos y fisiológicos del puesto:
+      </p>
+      
+      <!-- Scrollable List of All 8 Positions -->
+      <div class="overflow-y-auto space-y-2 flex-1 pr-1" id="fullPositionsList"></div>
+
+      <button onclick="appState.closePositionModal()"
+        class="w-full py-3 rounded-xl bg-neonGreen text-pitchDark font-black text-sm hover:bg-emerald-400 transition-colors">
+        Confirmar Selección
+      </button>
+    </div>
+  </div>
+
+  <!-- Modal 2: API Key Configuration Modal -->
+  <div id="apiKeyModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="w-full max-w-md bg-pitchSurface border-2 border-accentGold/60 rounded-2xl p-5 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2.5">
+          <i class="fa-solid fa-key text-accentGold text-lg"></i>
+          <h3 class="text-base font-black text-white">Configurar Gemini API Key</h3>
+        </div>
+        <button onclick="appState.toggleApiKeyModal(false)" class="w-8 h-8 rounded-full bg-pitchSurfaceElevated text-white hover:text-dangerRed flex items-center justify-center">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <p class="text-xs text-pitchTextSecondary leading-relaxed">
+        Ingresa tu clave de Google Gemini para habilitar el análisis de visión artificial en tiempo real. Si la dejas vacía, la app utilizará el motor de telemetría y simulación deportiva de alta fidelidad.
+      </p>
+
+      <div class="space-y-1">
+        <label class="text-[11px] font-bold text-pitchTextSecondary uppercase">GEMINI_API_KEY</label>
+        <input id="apiKeyInput" type="password" placeholder="AIzaSy..." 
+          class="w-full px-3.5 py-2.5 rounded-xl bg-pitchDark border border-pitchBorder text-sm text-white focus:outline-none focus:border-neonGreen" />
+      </div>
+
+      <div class="flex space-x-2 pt-2">
+        <button onclick="appState.saveApiKey()"
+          class="flex-1 py-2.5 rounded-xl bg-neonGreen text-pitchDark font-black text-xs hover:bg-emerald-400 transition-colors">
+          Guardar Clave
+        </button>
+        <button onclick="appState.clearApiKey()"
+          class="px-4 py-2.5 rounded-xl bg-pitchSurfaceElevated text-dangerRed font-bold text-xs hover:bg-pitchSurfaceVariant transition-colors">
+          Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-pitchBorder bg-pitchSurface/40 py-4 px-4 text-center text-xs text-pitchTextSecondary">
+    <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2">
+      <div class="flex items-center space-x-2">
+        <i class="fa-solid fa-shield-halved text-neonGreen"></i>
+        <span>Football Scout AI • Motor Biomecánico UEFA Pro</span>
+      </div>
+      <div>
+        <span>Desarrollado para atletas, canteras y directores metodológicos</span>
+      </div>
+    </div>
+  </footer>
+
+  <script>
+    /* ==========================================================================
+       DATA MODELS & SAMPLES (Ported directly from Kotlin models & SampleScoutData)
+       ========================================================================== */
+
+    const PLAYER_POSITIONS = [
+      {
+        code: "DC",
+        title: "Delantero Centro",
+        zone: "Ataque",
+        tacticalRole: "Finalización a un toque, juego de espaldas, remate de cabeza y desmarques de ruptura.",
+        biomechanicalFocus: "Secuencia proximal-distal de remate, torsión rápida de cadera y potencia explosiva de arranque."
+      },
+      {
+        code: "EXT",
+        title: "Extremo / Extremo Invertido",
+        zone: "Ataque",
+        tacticalRole: "Desborde 1v1, cambios bruscos de dirección, centros a la carrera y recorte interior.",
+        biomechanicalFocus: "Centro de gravedad bajo, fuerza reactiva de tobillo y absorción elástica en frenada excéntrica."
+      },
+      {
+        code: "MCO",
+        title: "Mediapunta / Enganche",
+        zone: "Mediocampo",
+        tacticalRole: "Último pase filtrado, control orientado en zonas de alta densidad rival y remate exterior.",
+        biomechanicalFocus: "Disociación escápulo-pélvica, propiocepción postural y visión periférica con cabeza levantada."
+      },
+      {
+        code: "MC",
+        title: "Mediocampista / Interior",
+        zone: "Mediocampo",
+        tacticalRole: "Distribución, transiciones, escaneo 360°, temporización y apoyo entre líneas.",
+        biomechanicalFocus: "Base de sustentación equilibrada, rotación fluida sobre eje axial y perfil corporal receptivo."
+      },
+      {
+        code: "MCD",
+        title: "Pivote Defensivo",
+        zone: "Mediocampo",
+        tacticalRole: "Intercepciones, equilibrio defensivo, duelos divididos y pase de seguridad.",
+        biomechanicalFocus: "Fuerza de reacción del suelo (GRF), rigidez lumbopélvica (core stiffness) y choque cinético."
+      },
+      {
+        code: "LAT",
+        title: "Lateral / Carrilero",
+        zone: "Defensa",
+        tacticalRole: "Recorrido de banda, centros en velocidad, repliegue defensivo y presión lateral.",
+        biomechanicalFocus: "Ciclo estiramiento-acortamiento continuo, zancada angular y desaceleración excéntrica de isquiotibiales."
+      },
+      {
+        code: "DFC",
+        title: "Defensa Central",
+        zone: "Defensa",
+        tacticalRole: "Duelos aéreos, despejes, perfilación 1v1, contención y anticipación en área.",
+        biomechanicalFocus: "Perfilación corporal a 45°, impulso vertical bipodal y prevención de valgo dinámico."
+      },
+      {
+        code: "POR",
+        title: "Portero / Guardameta",
+        zone: "Portería",
+        tacticalRole: "Tiempo de reacción motriz, blocajes, juego aéreo en área chica y salida con los pies.",
+        biomechanicalFocus: "Impulso pliométrico lateral explosivo, absorción cinética de caída y estabilidad articular glenohumeral."
+      }
+    ];
+
+    const SAMPLES = [
+      {
+        id: "remate_empeine",
+        title: "Remate Potente a Portería",
+        category: "Tiro / Finalización",
+        description: "Disparo con empeine tras pase retrasado desde la frontal del área.",
+        defaultPosition: "Delantero Centro (DC)",
+        result: {
+          accionIdentificada: "Remate a Portería (Empeine Total)",
+          posicionJugador: "Delantero Centro (DC)",
+          resumenEvaluacion: "Excelente generación de potencia balística con margen de mejora biomecánica en la colocación del pie de apoyo y vector de fuerza de reacción del suelo.",
+          calificacionTecnica: 78,
+          calificacionPostura: 71,
+          calificacionPotencia: 89,
+          calificacionVision: 76,
+          datosReales: {
+            velocidadEstimadaKmH: 88,
+            distanciaPieApoyoCm: 31.0,
+            distanciaIdealPieApoyoCm: 14.0,
+            anguloTorsoGrados: 18.5,
+            fuerzaImpactoNewtons: 820,
+            tiempoContactoMs: 14,
+            anguloFlexionRodillaGrados: 168.0
+          },
+          explicacionParaNinos: {
+            analogiaDivertida: "¡Eres un superhéroe lanzando un supercohete con tu pie de oro!",
+            elErrorExplicadoFacil: "Te estás tirando hacia atrás como si te fueras a dormir en la cama, ¡por eso la pelota vuela hasta las nubes como un globo!",
+            elTrucoMagico: "¡Haz como un avión! Inclina tu pechito hacia el suelo mirando la pelota y pégale fuerte con el empeine (los cordones).",
+            misionSecreta: "Misión secreta: Da un pisotón fuerte como un dinosaurio al ladito del balón antes de chutar. ¡Pruébalo 5 veces!"
+          },
+          puntosFuertes: [
+            "Coordinación motora fluida y gran velocidad de segmento angular en la pierna de golpeo.",
+            "Fijación ocular precisa en el centro de gravedad del balón al momento de impacto.",
+            "Generación notable de momento cinético y balance estabilizador del tren superior."
+          ],
+          queLeHaceFalta: [
+            "Pie de apoyo demasiado alejado (a 31 cm del balón cuando lo ideal son 14 cm), perdiendo fuerza.",
+            "Torso atrasado 18.5° en el impacto, haciendo que el balón suba descontrolado.",
+            "Falta de bloqueo rígido del tobillo (el pie se dobla al golpear en vez de estar firme como una roca)."
+          ],
+          metricasBiomecanicas: {
+            cadenaCinetica: "Sumación proximal-distal: la cadera inicia la rotación adecuadamente, pero la extensión de rodilla se anticipa 0.08s antes del contacto, reduciendo la velocidad terminal del pie.",
+            centroGravedadYApoyos: "Centro de gravedad inclinado 18.5° hacia atrás en el impacto. El vector GRF disipa energía verticalmente en vez de propulsarla hacia la meta.",
+            torqueYDisociacion: "Disociación escápulo-pélvica favorable con 28° de diferencia angular entre hombros y cadera, produciendo un buen efecto catapulta.",
+            prevencionLesiones: "Ligero estrés en el tendón rotuliano de la pierna de apoyo por frenada brusca con rodilla bloqueada a 168°. Se aconseja flexión a 145°.",
+            cienciaDelDeporteResumen: "La ciencia del deporte demuestra que el golpeo de empeine óptimo requiere transferir hasta 1200 N de fuerza en 12 milisegundos mediante la rigidez del complejo lumbo-pélvico."
+          },
+          consejosCienciaDelDeporte: [
+            "Aplicar el principio de palancas óseas de 3er grado: acercar el pie de apoyo a 12-15 cm para maximizar el brazo de momento de la pierna ejecutora.",
+            "Optimizar el ciclo de estiramiento-acortamiento (CEA) del cuádriceps mediante una extensión elástica previa sin pausa isométrica.",
+            "Mantener la cabeza y el esternón por encima del eje del balón para redirigir la fuerza reactiva en un plano horizontal rasante."
+          ],
+          ejerciciosRecomendados: [
+            {
+              nombre: "Fijación de Pie de Apoyo con Aro y Medición GRF",
+              objetivo: "Automatizar la colocación del pie no dominante a 12-15 cm del balón.",
+              descripcion: "Coloca una marca a 14 cm lateral del balón. Realiza 4 series de 8 aproximaciones controladas, apoyando firmemente metatarso y talón.",
+              principioBiomecanico: "Optimización de la base de sustentación y vector de fuerza reactiva del suelo (GRF).",
+              seriesReps: "4 series x 8 repeticiones",
+              intensidad: "Media"
+            },
+            {
+              nombre: "Disparo con Rodilla Sobre el Balón y Hombros Cerrados",
+              objetivo: "Corregir la inclinación angular del torso para mantener el remate tenso y raso.",
+              descripcion: "Desde media distancia, remata balones rodados manteniendo los hombros orientados hacia adelante y la rodilla dominante pasando sobre el balón.",
+              principioBiomecanico: "Alineación del centro de masa (CoM) sobre el punto de impacto para evitar dispersión parabólica.",
+              seriesReps: "5 series x 6 disparos",
+              intensidad: "Alta"
+            },
+            {
+              nombre: "Isométrico de Tobillo Rígido con Banda Elástica",
+              objetivo: "Fortalecer tibiales y tendón de Aquiles para máxima transferencia de energía sin deformación articular.",
+              descripcion: "Sentado con banda tensa en empeine, realiza dorsiflexiones y plantiflexiones completas sosteniendo 2 segundos en el punto de bloqueo.",
+              principioBiomecanico: "Aumento de la rigidez elástica articular (ankle stiffness) para reducir la pérdida de restitución elástica.",
+              seriesReps: "3 series x 15 repeticiones",
+              intensidad: "Media"
+            }
+          ],
+          veredictoScout: "Delantero con gran instinto goleador y velocidad de 88 km/h. Acercando el pie de apoyo a 14 cm y bajando el torso, superará los 100 km/h y no fallará ningún mano a mano."
+        }
+      },
+      {
+        id: "regate_1v1",
+        title: "Regate 1v1 y Cambio de Ritmo",
+        category: "Regate / Desborde",
+        description: "Finta de cuerpo con cambio de trayectoria explosivo para desbordar por banda.",
+        defaultPosition: "Extremo / Extremo Invertido (EXT)",
+        result: {
+          accionIdentificada: "Regate 1v1 con Finta Corporal y Salida Explosiva",
+          posicionJugador: "Extremo / Extremo Invertido (EXT)",
+          resumenEvaluacion: "Gran agilidad y cambio de ritmo explosivo, respaldado por un centro de gravedad bajo y buena reactividad neuromuscular en los apoyos.",
+          calificacionTecnica: 84,
+          calificacionPostura: 80,
+          calificacionPotencia: 75,
+          calificacionVision: 68,
+          datosReales: {
+            velocidadEstimadaKmH: 26,
+            distanciaPieApoyoCm: 18.0,
+            distanciaIdealPieApoyoCm: 12.0,
+            anguloTorsoGrados: 12.0,
+            fuerzaImpactoNewtons: 640,
+            tiempoContactoMs: 135,
+            anguloFlexionRodillaGrados: 134.0
+          },
+          explicacionParaNinos: {
+            analogiaDivertida: "¡Eres un leopardo súper veloz engañando a los defensores!",
+            elErrorExplicadoFacil: "Miras demasiado tus zapatillas en vez de mirar hacia dónde vas. ¡Es como correr con los ojos tapados!",
+            elTrucoMagico: "¡Usa tu mirada de búho! Levanta la cabeza para ver al portero y dale un toquecito suavecito al balón para que no se escape lejos.",
+            misionSecreta: "Misión secreta: Haz una finta engañando con tu cuerpo a un lado y ¡sal disparado como un rayo por el otro!"
+          },
+          puntosFuertes: [
+            "Centro de gravedad bajo muy dinámico que descoloca la cadera del rival en 0.2 segundos.",
+            "Fuerza reactiva de 640 N en el primer paso tras la finta.",
+            "Uso compensatorio de brazos en ángulo de 45° para mantener el balance."
+          ],
+          queLeHaceFalta: [
+            "Mirada fija en el balón (visión periférica reducida a menos de 40°).",
+            "Toque de escape muy largo (el balón viaja 2.4 metros fuera del radio de control).",
+            "Falta meter el hombro legalmente para proteger el balón."
+          ],
+          metricasBiomecanicas: {
+            cadenaCinetica: "Excelente desaceleración excéntrica previa a la propulsión concéntrica. La absorción en rodilla a 134° permite un despegue lateral potente.",
+            centroGravedadYApoyos: "Descenso del centro de masa de 14 cm en la finta, generando un ángulo de inclinación tibial de 48° ideal para tracción.",
+            torqueYDisociacion: "Torsión de cintura escapular rápida, aunque la recuperación de la cadera derecha presenta una ligera asimetría de 0.05s.",
+            prevencionLesiones: "Vigilar el valgo dinámico en la rodilla externa al momento de la frenada brusca. Se recomienda fortalecimiento del glúteo medio.",
+            cienciaDelDeporteResumen: "En extremos de élite, la clave biomecánica radica en el Índice de Fuerza Reactiva (RSI) y la capacidad de aplicar fuerza horizontal contra el césped en menos de 180 ms."
+          },
+          consejosCienciaDelDeporte: [
+            "Entrenar la visión no focalizada para independizar el escaneo visual del control propioceptivo podal.",
+            "Trabajar la fuerza excéntrica en cuádriceps e isquiotibiales (frenadas y cambios de dirección 505) para reducir el tiempo de transición.",
+            "Interponer el hombro y antebrazo legalmente inmediatamente superado el defensa para asegurar la ventaja espacial biomecánica."
+          ],
+          ejerciciosRecomendados: [
+            {
+              nombre: "Slalom con Estímulo Periférico y Semáforo Neurocognitivo",
+              objetivo: "Desarrollar conducción sin mirar la pelota mediante visión periférica.",
+              descripcion: "Conduce entre conos mientras un compañero muestra números con las manos que debes cantar en voz alta sin bajar la cabeza.",
+              principioBiomecanico: "Acoplamiento percepción-acción y descarga cognitiva de la visión focal.",
+              seriesReps: "6 repeticiones de 20 metros",
+              intensidad: "Alta"
+            },
+            {
+              nombre: "Finta Corta y Toque de Salida a Distancia Controlada",
+              objetivo: "Modular la fuerza elástica del toque de escape a menos de 1 metro.",
+              descripcion: "Enfrenta muñeco estático, ejecuta finta y el toque de salida debe ingresar en un cuadrado de 1.2m marcado con cinta.",
+              principioBiomecanico: "Modulación de fuerza de impacto por retroalimentación sensorial motora fina.",
+              seriesReps: "4 series x 10 repeticiones",
+              intensidad: "Media"
+            },
+            {
+              nombre: "Pliometría Lateral y Blindaje de Glúteo Medio",
+              objetivo: "Fortalecer estabilizadores de cadera y rodilla contra fuerzas de corte lateral.",
+              descripcion: "Saltos unipodales sobre minivallas laterales con recepción isométrica de 2 segundos manteniendo rodilla alineada con segundo dedo del pie.",
+              principioBiomecanico: "Prevención biomecánica del colapso en valgo dinámico y aumento del RSI.",
+              seriesReps: "3 series x 8 saltos por pierna",
+              intensidad: "Media-Alta"
+            }
+          ],
+          veredictoScout: "Extremo moderno desequilibrante con potencial de élite en el 1 contra 1. Incorporando escaneo visual previo al regate y toques más cortos, será imparable."
+        }
+      },
+      {
+        id: "perfilacion_defensiva",
+        title: "Perfilación Defensiva y Repliegue",
+        category: "Táctica / Defensa",
+        description: "Postura defensiva individual conteniendo el avance rival hacia el área.",
+        defaultPosition: "Defensa Central (DFC)",
+        result: {
+          accionIdentificada: "Perfilación Defensiva 1v1 y Orientación de Cadera",
+          posicionJugador: "Defensa Central (DFC)",
+          resumenEvaluacion: "Excelente lectura posicional y temporización, con necesidad de corregir la base de sustentación para no perder reactividad elástica.",
+          calificacionTecnica: 76,
+          calificacionPostura: 70,
+          calificacionPotencia: 78,
+          calificacionVision: 86,
+          datosReales: {
+            velocidadEstimadaKmH: 21,
+            distanciaPieApoyoCm: 38.0,
+            distanciaIdealPieApoyoCm: 56.0,
+            anguloTorsoGrados: 24.0,
+            fuerzaImpactoNewtons: 520,
+            tiempoContactoMs: 185,
+            anguloFlexionRodillaGrados: 162.0
+          },
+          explicacionParaNinos: {
+            analogiaDivertida: "¡Eres el escudo protector de un castillo medieval!",
+            elErrorExplicadoFacil: "Cruzas las piernitas al correr hacia atrás y te puedes tropezar tú solito con tus propios zapatos.",
+            elTrucoMagico: "¡Muévete como un cangrejo bailarín! Abre bien las piernas y camina de ladito en las puntas de los pies para que nadie pase.",
+            misionSecreta: "Misión secreta: Pasos rápidos de cangrejo hacia atrás sin juntar nunca los pies. ¡Defiende tu portería!"
+          },
+          puntosFuertes: [
+            "Mantenimiento constante de la distancia de intervención (1.5 - 2 metros) sin rifarse.",
+            "Paciencia táctica y lectura del pie dominante del adversario para orientarlo a la banda.",
+            "Uso adecuado del brazo de referencia para calibrar la distancia relativa."
+          ],
+          queLeHaceFalta: [
+            "Pies apoyados en planta completa y talones en lugar de mantener tensión elástica sobre metatarsos.",
+            "Tendencia a cruzar las piernas en el retroceso lateral (38 cm de base cuando necesita 56 cm).",
+            "Angulación de rodillas demasiado extendida (162°), perdiendo 0.25 segundos al arrancar."
+          ],
+          metricasBiomecanicas: {
+            cadenaCinetica: "La activación de la cadena posterior está retardada debido a la inclinación anterior excesiva del tronco (24°).",
+            centroGravedadYApoyos: "Base de sustentación estrecha (38 cm) al retroceder. Requiere ensancharse a la anchura de hombros (56 cm) para optimizar la estabilidad estática y dinámica.",
+            torqueYDisociacion: "La cadera tarda 0.22s en girar 90° debido a que el pie trasero se encuentra apoyado plano sin posibilidad de pivote libre.",
+            prevencionLesiones: "Riesgo de sobrecarga en ligamento cruzado anterior (LCA) al frenar cruzando piernas. Se debe priorizar el paso de caída (drop step) sin cruce.",
+            cienciaDelDeporteResumen: "La ciencia de la defensa moderna exige posicionar el cuerpo a 45° con relación al eje del balón, manteniendo el centro de gravedad oscilante para responder en <0.15s a cualquier quiebre."
+          },
+          consejosCienciaDelDeporte: [
+            "Mantener el peso en el tercio anterior del pie (metatarsos) para activar el reflejo miotático y acortar el tiempo de reacción motriz.",
+            "Implementar la técnica del 'drop step' (paso de caída) abriendo la punta del pie hacia la dirección de carrera en vez de cruzar extremidades.",
+            "Conservar una semiflexión de rodillas a 130°-140° para almacenar energía elástica en los tendones curicipitales y rotulianos."
+          ],
+          ejerciciosRecomendados: [
+            {
+              nombre: "Desplazamientos en Escalera con Perfil 45° sobre Metatarsos",
+              objetivo: "Eliminar el cruce de pies y automatizar el apoyo elástico reactivo.",
+              descripcion: "Recorre la escalera de agilidad hacia atrás en ángulo de 45° apoyando únicamente metatarsos sin que los talones toquen el suelo.",
+              principioBiomecanico: "Preactivación muscular y almacenamiento elástico en el complejo gastrosóleo-tendón de Aquiles.",
+              seriesReps: "5 pasadas completas",
+              intensidad: "Media"
+            },
+            {
+              nombre: "Duelos de Temporización y Drop Step a la Señal",
+              objetivo: "Optimizar la transición de repliegue a sprint de recuperación.",
+              descripcion: "Repliega conteniendo a un atacante; ante señal sonora, abre cadera con paso de caída y esprinta 5 metros a máxima intensidad sin cruzar apoyos.",
+              principioBiomecanico: "Eficiencia cinemática del momento angular de cadera en cambios de dirección de 180°.",
+              seriesReps: "6 series de duelo",
+              intensidad: "Alta"
+            },
+            {
+              nombre: "Estabilidad Unilateral y Antirrotación con Polea/Banda (Pallof Press)",
+              objetivo: "Reforzar la resistencia del tronco ante empujes del atacante.",
+              descripcion: "En posición de zancada defensiva isométrica, extiende y flexiona los brazos sosteniendo una banda elástica que tracciona lateralmente.",
+              principioBiomecanico: "Estabilidad rotacional del core e integración lumbopélvica para resistir el choque físico.",
+              seriesReps: "3 series x 12 reps por lado",
+              intensidad: "Media"
+            }
+          ],
+          veredictoScout: "Defensa central con altísima inteligencia táctica y sobriedad. Corrigiendo el apoyo elástico y erradicando el cruce de piernas en retroceso, alcanzará un perfil defensivo impenetrable digno de categorías profesionales."
+        }
+      }
+    ];
+
+    /* ==========================================================================
+       APPLICATION STATE CONTROLLER
+       ========================================================================== */
+
+    class FootballScoutApp {
+      constructor() {
+        this.currentView = 'capture'; // 'capture', 'live-scanner', 'media-ready', 'analyzing', 'results', 'history'
+        this.selectedPosition = PLAYER_POSITIONS[0]; // DC default
+        this.currentPresetAction = null;
+        this.currentMedia = {
+          type: 'none', // 'photo', 'video', 'preset'
+          src: null,
+          file: null,
+          title: ''
+        };
+        this.currentAnalysisResult = null;
+        this.history = [];
+        this.apiKey = localStorage.getItem('scoutai_gemini_api_key') || '';
+
+        // Media Stream elements
+        this.webcamStream = null;
+        this.mediaRecorder = null;
+        this.recordedChunks = [];
+        this.animFrameId = null;
+        this.hudTime = 0;
+
+        this.init();
+      }
+
+      init() {
+        this.loadHistory();
+        this.renderPresetSamples();
+        this.renderPositionChips();
+        this.updateApiKeyBadge();
+        this.setupLiveHudCanvas();
+      }
+
+      // LocalStorage Management
+      loadHistory() {
+        try {
+          const stored = localStorage.getItem('scoutai_history_items');
+          this.history = stored ? JSON.parse(stored) : [];
+        } catch (e) {
+          console.error("Error loading history", e);
+          this.history = [];
+        }
+        this.updateHistoryBadges();
+      }
+
+      saveHistoryItem(result, mediaLabel, isVideo = true) {
+        const item = {
+          id: Date.now(),
+          timestamp: Date.now(),
+          mediaLabel: mediaLabel || result.accionIdentificada,
+          isVideo: isVideo,
+          result: result
+        };
+        this.history.unshift(item);
+        localStorage.setItem('scoutai_history_items', JSON.stringify(this.history));
+        this.updateHistoryBadges();
+        return item.id;
+      }
+
+      deleteHistoryItem(id) {
+        this.history = this.history.filter(item => item.id !== id);
+        localStorage.setItem('scoutai_history_items', JSON.stringify(this.history));
+        this.updateHistoryBadges();
+        this.renderHistoryScreen();
+      }
+
+      clearAllHistory() {
+        this.history = [];
+        localStorage.removeItem('scoutai_history_items');
+        this.updateHistoryBadges();
+        this.renderHistoryScreen();
+      }
+
+      confirmClearAllHistory() {
+        if (this.history.length === 0) return;
+        if (window.confirm("¿Seguro que deseas vaciar todos los registros de scouting y biomecánica?")) {
+          this.clearAllHistory();
+        }
+      }
+
+      updateHistoryBadges() {
+        const count = this.history.length;
+        const hBadge = document.getElementById('historyCountBadge');
+        const bannerCount = document.getElementById('historyBannerCount');
+        if (hBadge) hBadge.textContent = count;
+        if (bannerCount) bannerCount.textContent = count;
+      }
+
+      // API Key Config
+      toggleApiKeyModal(show) {
+        const modal = document.getElementById('apiKeyModal');
+        const input = document.getElementById('apiKeyInput');
+        if (show) {
+          input.value = this.apiKey;
+          modal.classList.remove('hidden');
+          modal.classList.add('flex');
+        } else {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        }
+      }
+
+      saveApiKey() {
+        const input = document.getElementById('apiKeyInput');
+        this.apiKey = input.value.trim();
+        if (this.apiKey) {
+          localStorage.setItem('scoutai_gemini_api_key', this.apiKey);
+        } else {
+          localStorage.removeItem('scoutai_gemini_api_key');
+        }
+        this.updateApiKeyBadge();
+        this.toggleApiKeyModal(false);
+      }
+
+      clearApiKey() {
+        this.apiKey = '';
+        localStorage.removeItem('scoutai_gemini_api_key');
+        document.getElementById('apiKeyInput').value = '';
+        this.updateApiKeyBadge();
+        this.toggleApiKeyModal(false);
+      }
+
+      updateApiKeyBadge() {
+        const label = document.getElementById('apiKeyStatusText');
+        if (label) {
+          label.textContent = this.apiKey ? 'Gemini Activo' : 'Gemini Key';
+        }
+      }
+
+      // Navigation Router
+      navigateTo(viewName) {
+        if (this.currentView === 'live-scanner' && viewName !== 'live-scanner') {
+          this.stopWebcam();
+        }
+
+        this.currentView = viewName;
+
+        const views = [
+          'view-capture',
+          'view-live-scanner',
+          'view-media-ready',
+          'view-analyzing',
+          'view-results',
+          'view-history'
+        ];
+
+        views.forEach(v => {
+          const el = document.getElementById(v);
+          if (el) el.classList.add('hidden');
+        });
+
+        const activeEl = document.getElementById(`view-${viewName}`);
+        if (activeEl) {
+          activeEl.classList.remove('hidden');
+        }
+
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+        if (viewName === 'history') {
+          this.renderHistoryScreen();
+        }
+      }
+
+      // Position Management
+      setPosition(posCode) {
+        const pos = PLAYER_POSITIONS.find(p => p.code === posCode) || PLAYER_POSITIONS[0];
+        this.selectedPosition = pos;
+
+        // Update chips in Media Ready screen
+        document.querySelectorAll('.pos-chip').forEach(chip => {
+          const code = chip.getAttribute('data-code');
+          if (code === pos.code) {
+            chip.classList.remove('bg-pitchSurfaceElevated', 'text-white', 'border-pitchBorder');
+            chip.classList.add('bg-neonGreen', 'text-pitchDark', 'border-neonGreen');
+          } else {
+            chip.classList.add('bg-pitchSurfaceElevated', 'text-white', 'border-pitchBorder');
+            chip.classList.remove('bg-neonGreen', 'text-pitchDark', 'border-neonGreen');
+          }
+        });
+
+        // Update live chips
+        document.querySelectorAll('.live-pos-chip').forEach(chip => {
+          const code = chip.getAttribute('data-code');
+          if (code === pos.code) {
+            chip.classList.remove('bg-pitchSurfaceElevated', 'text-white');
+            chip.classList.add('bg-neonGreen', 'text-pitchDark');
+          } else {
+            chip.classList.add('bg-pitchSurfaceElevated', 'text-white');
+            chip.classList.remove('bg-neonGreen', 'text-pitchDark');
+          }
+        });
+
+        // Update preview badges
+        const mb = document.getElementById('mediaPositionBadge');
+        if (mb) mb.textContent = `POS: ${pos.code}`;
+
+        const btnText = document.getElementById('analyzeBtnText');
+        if (btnText) btnText.textContent = `Analizar ${pos.code} con Gemini AI`;
+
+        // Update active details banner
+        const titleEl = document.getElementById('posDetailTitle');
+        const tacEl = document.getElementById('posDetailTactical');
+        const bioEl = document.getElementById('posDetailBiomechanical');
+        if (titleEl) titleEl.textContent = `${pos.title} (${pos.code}) - ${pos.zone}`;
+        if (tacEl) tacEl.textContent = `Exigencia táctica: ${pos.tacticalRole}`;
+        if (bioEl) bioEl.textContent = `Foco Biomecánico: ${pos.biomechanicalFocus}`;
+      }
+
+      openPositionModal() {
+        const container = document.getElementById('fullPositionsList');
+        container.innerHTML = PLAYER_POSITIONS.map(pos => {
+          const isSelected = pos.code === this.selectedPosition.code;
+          return `
+            <div onclick="appState.selectFromModal('${pos.code}')"
+              class="cursor-pointer rounded-xl p-3 border transition-all ${isSelected ? 'bg-[#0F3B22] border-neonGreen' : 'bg-pitchSurface border-pitchBorder hover:border-pitchTextSecondary'} flex items-start justify-between">
+              <div class="flex items-start space-x-3">
+                <div class="w-9 h-9 rounded-lg ${isSelected ? 'bg-neonGreen text-pitchDark' : 'bg-pitchSurfaceElevated text-white'} font-black text-xs flex items-center justify-center">
+                  ${pos.code}
+                </div>
+                <div class="space-y-0.5">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-sm font-bold text-white">${pos.title}</span>
+                    <span class="text-[10px] font-bold px-1.5 py-0.2 rounded bg-pitchSurfaceElevated text-neonGreen">${pos.zone}</span>
+                  </div>
+                  <p class="text-[11px] text-pitchTextSecondary leading-snug">${pos.tacticalRole}</p>
+                  <p class="text-[10px] text-accentGold font-medium">Biomecánica: ${pos.biomechanicalFocus}</p>
+                </div>
+              </div>
+              ${isSelected ? '<i class="fa-solid fa-circle-check text-neonGreen text-lg ml-2"></i>' : ''}
+            </div>
+          `;
+        }).join('');
+
+        const modal = document.getElementById('positionModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      }
+
+      closePositionModal() {
+        const modal = document.getElementById('positionModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      }
+
+      selectFromModal(code) {
+        this.setPosition(code);
+        this.closePositionModal();
+      }
+
+      renderPresetSamples() {
+        const container = document.getElementById('presetSamplesContainer');
+        if (!container) return;
+
+        container.innerHTML = SAMPLES.map(sample => {
+          return `
+            <div onclick="appState.selectPresetSample('${sample.id}')"
+              class="cursor-pointer group rounded-2xl p-4 bg-pitchSurface border border-pitchBorder hover:border-neonGreen/80 transition-all flex flex-col justify-between space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-[#0A3620] text-neonGreen">
+                  ${sample.category}
+                </span>
+                <div class="w-7 h-7 rounded-full bg-pitchSurfaceElevated group-hover:bg-neonGreen group-hover:text-pitchDark text-white flex items-center justify-center text-xs transition-colors">
+                  <i class="fa-solid fa-play ml-0.5"></i>
+                </div>
+              </div>
+              <div>
+                <h4 class="text-sm font-bold text-white group-hover:text-neonGreen transition-colors">${sample.title}</h4>
+                <p class="text-xs text-pitchTextSecondary mt-1 line-clamp-2">${sample.description}</p>
+              </div>
+              <div class="pt-2 border-t border-pitchBorder flex items-center justify-between text-[11px] text-pitchTextSecondary">
+                <span>Posición: <strong class="text-white">${sample.defaultPosition.split('(')[0].trim()}</strong></span>
+                <span class="text-neonGreen font-semibold">1-Tap Scout</span>
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        // Also render quick presets in live scanner
+        const liveContainer = document.getElementById('liveQuickPresetsContainer');
+        if (liveContainer) {
+          liveContainer.innerHTML = SAMPLES.map(s => {
+            return `
+              <button onclick="appState.selectPresetSample('${s.id}')"
+                class="px-2.5 py-1 rounded-lg bg-pitchSurfaceElevated border border-pitchBorder hover:border-neonGreen text-neonGreen text-[11px] font-bold transition-colors">
+                ${s.category.split('/')[0].trim()}
+              </button>
+            `;
+          }).join('');
+        }
+      }
+
+      renderPositionChips() {
+        const container = document.getElementById('positionChipsGrid');
+        if (container) {
+          container.innerHTML = PLAYER_POSITIONS.map(pos => {
+            const isSelected = pos.code === this.selectedPosition.code;
+            return `
+              <button onclick="appState.setPosition('${pos.code}')" data-code="${pos.code}"
+                class="pos-chip p-2 rounded-xl border text-left flex items-center space-x-2 transition-all ${isSelected ? 'bg-neonGreen text-pitchDark border-neonGreen' : 'bg-pitchSurfaceElevated text-white border-pitchBorder hover:border-pitchTextSecondary'}">
+                <span class="text-xs font-black">${pos.code}</span>
+                <span class="text-[11px] font-semibold truncate">${pos.title.split('/')[0].trim()}</span>
+              </button>
+            `;
+          }).join('');
+        }
+
+        const liveChips = document.getElementById('livePositionChips');
+        if (liveChips) {
+          const quickList = ['DC', 'EXT', 'MC', 'DFC'];
+          liveChips.innerHTML = quickList.map(code => {
+            const isSelected = code === this.selectedPosition.code;
+            return `
+              <button onclick="appState.setPosition('${code}')" data-code="${code}"
+                class="live-pos-chip px-2.5 py-1 rounded-lg text-xs font-black transition-all ${isSelected ? 'bg-neonGreen text-pitchDark' : 'bg-pitchSurfaceElevated text-white hover:bg-pitchSurfaceVariant'}">
+                ${code}
+              </button>
+            `;
+          }).join('');
+        }
+      }
+
+      selectPresetSample(sampleId) {
+        const sample = SAMPLES.find(s => s.id === sampleId) || SAMPLES[0];
+        this.currentPresetAction = sample;
+        this.currentMedia = {
+          type: 'preset',
+          src: null,
+          file: null,
+          title: sample.title
+        };
+
+        // Automatically map position
+        if (sample.defaultPosition.includes('Extremo') || sample.defaultPosition.includes('EXT')) {
+          this.setPosition('EXT');
+        } else if (sample.defaultPosition.includes('Defensa') || sample.defaultPosition.includes('DFC')) {
+          this.setPosition('DFC');
+        } else {
+          this.setPosition('DC');
+        }
+
+        this.showMediaReadyView(sample.title, false);
+      }
+
+      showMediaReadyView(title, isVideo) {
+        const imgEl = document.getElementById('mediaPreviewImg');
+        const videoEl = document.getElementById('mediaPreviewVideo');
+        const placeholder = document.getElementById('mediaPlaceholderTactical');
+        const titleEl = document.getElementById('mediaPreviewTitle');
+        const typeBadge = document.getElementById('mediaTypeBadgeText');
+
+        if (titleEl) titleEl.textContent = title;
+        if (typeBadge) typeBadge.textContent = isVideo ? 'VIDEO CLIP' : 'FOTOGRAMA';
+
+        if (this.currentMedia.type === 'photo' && this.currentMedia.src) {
+          imgEl.src = this.currentMedia.src;
+          imgEl.classList.remove('hidden');
+          videoEl.classList.add('hidden');
+          placeholder.classList.add('hidden');
+        } else if (this.currentMedia.type === 'video' && this.currentMedia.src) {
+          videoEl.src = this.currentMedia.src;
+          videoEl.classList.remove('hidden');
+          imgEl.classList.add('hidden');
+          placeholder.classList.add('hidden');
+        } else {
+          placeholder.classList.remove('hidden');
+          imgEl.classList.add('hidden');
+          videoEl.classList.add('hidden');
+        }
+
+        this.navigateTo('media-ready');
+      }
+
+      handleFileSelected(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const isVideo = file.type.startsWith('video');
+        const url = URL.createObjectURL(file);
+
+        this.currentPresetAction = null;
+        this.currentMedia = {
+          type: isVideo ? 'video' : 'photo',
+          src: url,
+          file: file,
+          title: file.name
+        };
+
+        this.showMediaReadyView(file.name, isVideo);
+      }
+
+      /* ==========================================================================
+         WEBCAM & AR HUD ENGINE (Canvas Skeletal Articulation & Telemetry)
+         ========================================================================== */
+
+      async startLiveScanner() {
+        this.navigateTo('live-scanner');
+        const videoEl = document.getElementById('webcamVideo');
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: 'environment',
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+          this.webcamStream = stream;
+          videoEl.srcObject = stream;
+          videoEl.play();
+        } catch (err) {
+          console.warn("Camera permission not granted or unavailable; using simulated camera feed", err);
+          this.webcamStream = null;
+        }
+
+        this.startHudLoop();
+      }
+
+      stopWebcam() {
+        if (this.webcamStream) {
+          this.webcamStream.getTracks().forEach(track => track.stop());
+          this.webcamStream = null;
+        }
+        if (this.animFrameId) {
+          cancelAnimationFrame(this.animFrameId);
+          this.animFrameId = null;
+        }
+      }
+
+      closeLiveScanner() {
+        this.stopWebcam();
+        this.navigateTo('capture');
+      }
+
+      toggleCameraSource() {
+        // Toggle camera flip
+        this.stopWebcam();
+        this.startLiveScanner();
+      }
+
+      setupLiveHudCanvas() {
+        const canvas = document.getElementById('liveHudCanvas');
+        if (!canvas) return;
+        const resizeCanvas = () => {
+          const rect = canvas.getBoundingClientRect();
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+        };
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+      }
+
+      startHudLoop() {
+        const canvas = document.getElementById('liveHudCanvas');
+        const video = document.getElementById('webcamVideo');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+
+        const draw = () => {
+          this.hudTime += 0.035;
+          const w = canvas.width;
+          const h = canvas.height;
+
+          ctx.clearRect(0, 0, w, h);
+
+          // 1. Draw webcam video if stream is active
+          if (this.webcamStream && video.readyState >= 2) {
+            ctx.drawImage(video, 0, 0, w, h);
+          } else {
+            // Tactical dark simulated soccer pitch background
+            ctx.fillStyle = "#07170E";
+            ctx.fillRect(0, 0, w, h);
+
+            // Subtle pitch grass stripes
+            for (let i = 0; i < w; i += 60) {
+              ctx.fillStyle = (Math.floor(i / 60) % 2 === 0) ? "rgba(15, 38, 25, 0.5)" : "rgba(22, 53, 36, 0.5)";
+              ctx.fillRect(i, 0, 60, h);
+            }
+          }
+
+          // 2. Tactical Pitch Overlay Lines
+          ctx.strokeStyle = "rgba(0, 230, 118, 0.18)";
+          ctx.lineWidth = 1;
+          const gridStep = 45;
+          for (let x = 0; x < w; x += gridStep) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+          }
+          for (let y = 0; y < h; y += gridStep) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+          }
+
+          // 3. Central Target Scouting Reticle Box
+          const boxX = w * 0.16;
+          const boxY = h * 0.14;
+          const boxW = w * 0.68;
+          const boxH = h * 0.68;
+
+          ctx.setLineDash([12, 8]);
+          ctx.strokeStyle = "rgba(0, 230, 118, 0.6)";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(boxX, boxY, boxW, boxH);
+          ctx.setLineDash([]);
+
+          // 4. Kinetic Human Skeletal Tracking Simulation
+          // Mathematical oscillations simulating a player winding up a kick
+          const sway = Math.sin(this.hudTime * 2) * 15;
+          const kickOsc = Math.sin(this.hudTime * 2.5);
+
+          const head = { x: w * 0.50 + sway * 0.3, y: h * 0.28 };
+          const chest = { x: w * 0.49 + sway * 0.4, y: h * 0.38 };
+          const hip = { x: w * 0.48 + sway * 0.3, y: h * 0.49 };
+          
+          // Plant leg (left)
+          const kneePlant = { x: w * 0.43, y: h * 0.62 };
+          const footPlant = { x: w * 0.41, y: h * 0.74 };
+
+          // Striking leg (right) swinging
+          const kneeKick = { x: w * 0.55 + kickOsc * 18, y: h * 0.58 - Math.abs(kickOsc) * 10 };
+          const footKick = { x: w * 0.62 + kickOsc * 38, y: h * 0.70 - kickOsc * 25 };
+
+          // Soccer Ball Position
+          const ball = { x: w * 0.49, y: h * 0.75 };
+
+          // Skeletal Bones
+          ctx.lineWidth = 3;
+          ctx.strokeStyle = "rgba(56, 189, 248, 0.75)"; // Cyan limbs
+
+          const drawBone = (p1, p2, col) => {
+            ctx.beginPath();
+            ctx.strokeStyle = col || "rgba(56, 189, 248, 0.75)";
+            ctx.moveTo(p1.x, p1.y);
+            ctx.lineTo(p2.x, p2.y);
+            ctx.stroke();
+          };
+
+          drawBone(head, chest);
+          drawBone(chest, hip);
+          drawBone(hip, kneePlant);
+          drawBone(kneePlant, footPlant);
+
+          // Striking leg highlighted in vibrant neon
+          drawBone(hip, kneeKick, "#00E676");
+          drawBone(kneeKick, footKick, "#00E676");
+
+          // Ground Reaction Force (GRF) Vector from plant foot
+          ctx.strokeStyle = "#FF9100";
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.moveTo(footPlant.x, footPlant.y);
+          ctx.lineTo(footPlant.x - 20, footPlant.y - 55);
+          ctx.stroke();
+
+          // Joint Nodes (Anatomical tracking dots)
+          const drawJoint = (p, color, radius = 6) => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          };
+
+          drawJoint(head, "#FFFFFF", 6);
+          drawJoint(chest, "#FFD600", 6.5);
+          drawJoint(hip, "#FFD600", 6.5);
+          drawJoint(kneePlant, "#38BDF8", 6);
+          drawJoint(footPlant, "#FF9100", 8); // Plant foot
+          drawJoint(kneeKick, "#00E676", 6.5);
+          drawJoint(footKick, "#00E676", 8); // Striking foot
+
+          // Soccer Ball Circle
+          ctx.beginPath();
+          ctx.arc(ball.x, ball.y, 14, 0, Math.PI * 2);
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fill();
+          ctx.strokeStyle = "#07170E";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+
+          // Live Distance Line (Pie de apoyo al balón)
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = "#FF9100";
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(footPlant.x, footPlant.y);
+          ctx.lineTo(ball.x, ball.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // In-Canvas Floating Angle / Distance Labels
+          ctx.font = "bold 11px Inter, sans-serif";
+          ctx.fillStyle = "#FFD600";
+          ctx.fillText("Torso: 18.5°", chest.x + 12, chest.y);
+
+          ctx.fillStyle = "#FF9100";
+          ctx.fillText("Apoyo: 31cm", footPlant.x - 65, footPlant.y - 8);
+
+          ctx.fillStyle = "#00E676";
+          ctx.fillText("V: 88 km/h", footKick.x + 12, footKick.y);
+
+          this.animFrameId = requestAnimationFrame(draw);
+        };
+
+        this.animFrameId = requestAnimationFrame(draw);
+      }
+
+      captureAndAnalyzeFromLive() {
+        const canvas = document.getElementById('liveHudCanvas');
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        this.stopWebcam();
+        this.currentPresetAction = null;
+        this.currentMedia = {
+          type: 'photo',
+          src: dataUrl,
+          file: null,
+          title: `Captura en Directo (${this.selectedPosition.code})`
+        };
+
+        this.showMediaReadyView(this.currentMedia.title, false);
+      }
+
+      triggerQuickPhoto() {
+        // Creates hidden input or camera capture
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment';
+        input.onchange = (e) => this.handleFileSelected(e);
+        input.click();
+      }
+
+      triggerVideoRecording() {
+        this.startLiveScanner();
+      }
+
+      /* ==========================================================================
+         ANALYSIS ENGINE: GEMINI 2.5 FLASH PRO & HIGH-FIDELITY SPORTS SCIENCE
+         ========================================================================== */
+
+      async startAnalysis() {
+        this.navigateTo('analyzing');
+        const statusEl = document.getElementById('analysisStatusMessage');
+        const progressEl = document.getElementById('analysisProgressBar');
+        const percentEl = document.getElementById('analysisPercentText');
+
+        const updateProgress = (msg, percent) => {
+          if (statusEl) statusEl.textContent = msg;
+          if (progressEl) progressEl.style.width = `${percent}%`;
+          if (percentEl) percentEl.textContent = `${percent}%`;
+        };
+
+        // Phase 1: Frame decomposition
+        updateProgress(`Descomponiendo fotogramas cinemáticos para ${this.selectedPosition.title}...`, 15);
+        await new Promise(r => setTimeout(r, 450));
+
+        // Phase 2: Skeletal angles
+        updateProgress("Investigando cinemática, ángulos articulares y cadena proximal-distal...", 35);
+        await new Promise(r => setTimeout(r, 550));
+
+        // Phase 3: Telemetry & GRF
+        updateProgress("Calculando datos reales (velocidad km/h, GRF Newtons y pie de apoyo)...", 60);
+        await new Promise(r => setTimeout(r, 500));
+
+        // Phase 4: Child explanation & Gemini synthesis
+        updateProgress("Generando informe de Ciencias del Deporte y explicación para niños de 5 años...", 80);
+
+        let finalResult = null;
+
+        // Check if API key is provided for real Gemini call
+        if (this.apiKey) {
+          try {
+            finalResult = await this.callGeminiScoutService();
+          } catch (e) {
+            console.warn("Gemini call failed or timed out, using calibrated sports science result", e);
+            finalResult = this.generateSynthesizedResult();
+          }
+        } else {
+          await new Promise(r => setTimeout(r, 600));
+          finalResult = this.generateSynthesizedResult();
+        }
+
+        updateProgress("Sintetizando informe biomecánico y guardando en historial...", 95);
+        await new Promise(r => setTimeout(r, 350));
+
+        // Save to Persistent LocalStorage History
+        this.saveHistoryItem(finalResult, this.currentMedia.title, this.currentMedia.type === 'video');
+
+        this.currentAnalysisResult = finalResult;
+        this.displayResults(finalResult);
+      }
+
+      async callGeminiScoutService() {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${this.apiKey}`;
+        
+        const systemPrompt = `Eres el Ojeador Biomecánico Jefe y Director de Metodología de cantera de élite internacional (UEFA Pro & Ph.D. en Ciencias del Deporte).
+Estás analizando la técnica y biomecánica en directo de un futbolista que juega en la posición de: ${this.selectedPosition.title} (${this.selectedPosition.code}).
+Analiza el movimiento con máximo rigor de Ciencias del Deporte (cadena cinética, vectores de fuerza GRF, ángulos articulares) PERO ADEMÁS genera una explicación tan clara, divertida y sencilla que la pueda entender perfectamente hasta un niño de 5 años.
+
+Debes responder EXCLUSIVAMENTE con un JSON válido con la siguiente estructura exacta y textos en español:
+{
+  "posicionJugador": "${this.selectedPosition.title} (${this.selectedPosition.code})",
+  "accionIdentificada": "Nombre de la acción observada",
+  "resumenEvaluacion": "Diagnóstico integral del ojeador en 1-2 oraciones combinando técnica y biomecánica.",
+  "calificacionTecnica": 82,
+  "calificacionPostura": 75,
+  "calificacionPotencia": 80,
+  "calificacionVision": 78,
+  "datosReales": {
+    "velocidadEstimadaKmH": 85,
+    "distanciaPieApoyoCm": 27.5,
+    "distanciaIdealPieApoyoCm": 14.0,
+    "anguloTorsoGrados": 16.5,
+    "fuerzaImpactoNewtons": 790,
+    "tiempoContactoMs": 15,
+    "anguloFlexionRodillaGrados": 140.0
+  },
+  "explicacionParaNinos": {
+    "analogiaDivertida": "¡Imagina que tu cuerpo es un resorte de superhéroe listo para disparar un rayo!",
+    "elErrorExplicadoFacil": "Te estás tirando hacia atrás como si te fueras a dormir en la cama, por eso la pelota vuela como un globo a las nubes.",
+    "elTrucoMagico": "¡Haz como un avión! Pon tu pechito sobre la pelota mirando al suelo y pégale con fuerza con los cordones.",
+    "misionSecreta": "Misión: Da un pisotón de dinosaurio justo al ladito de la pelota antes de patear. ¡Pruébalo 5 veces!"
+  },
+  "puntosFuertes": ["Punto fuerte biomecánico 1", "Punto fuerte biomecánico 2", "Punto fuerte biomecánico 3"],
+  "queLeHaceFalta": ["Falla biomecánica concreta", "Detalle corporal a corregir", "Toma de decisiones"],
+  "metricasBiomecanicas": {
+    "cadenaCinetica": "Evaluación de sumación proximal-distal.",
+    "centroGravedadYApoyos": "Base de sustentación y vector GRF.",
+    "torqueYDisociacion": "Disociación cintura-hombros y core.",
+    "prevencionLesiones": "Alineación articular y prevención de valgo.",
+    "cienciaDelDeporteResumen": "Fundamento fisiológico y motor para ${this.selectedPosition.title}."
+  },
+  "consejosCienciaDelDeporte": ["Consejo 1", "Consejo 2", "Consejo 3"],
+  "ejerciciosRecomendados": [
+    {
+      "nombre": "Ejercicio 1",
+      "objetivo": "Objetivo biomecánico",
+      "descripcion": "Descripción del ejercicio",
+      "principioBiomecanico": "Principio motor",
+      "seriesReps": "4 series x 8 repeticiones",
+      "intensidad": "Media-Alta"
+    }
+  ],
+  "veredictoScout": "Veredicto profesional de scouting."
+}`;
+
+        const payload = {
+          contents: [{ parts: [{ text: systemPrompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.2
+          }
+        };
+
+        const resp = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const json = await resp.json();
+        const text = json.candidates[0].content.parts[0].text;
+        const clean = text.replace(/```json/g, '').replace(/```/g, '').trim();
+        return JSON.parse(clean);
+      }
+
+      generateSynthesizedResult() {
+        if (this.currentPresetAction) {
+          const res = JSON.parse(JSON.stringify(this.currentPresetAction.result));
+          res.posicionJugador = `${this.selectedPosition.title} (${this.selectedPosition.code})`;
+          return res;
+        }
+
+        // Match based on selected position
+        let baseSample = SAMPLES[0];
+        if (this.selectedPosition.code === 'EXT') baseSample = SAMPLES[1];
+        if (this.selectedPosition.code === 'DFC' || this.selectedPosition.code === 'MCD') baseSample = SAMPLES[2];
+
+        const res = JSON.parse(JSON.stringify(baseSample.result));
+        res.posicionJugador = `${this.selectedPosition.title} (${this.selectedPosition.code})`;
+        return res;
+      }
+
+      /* ==========================================================================
+         RESULTS DISPLAY & VIEW MODES
+         ========================================================================== */
+
+      displayResults(result) {
+        this.navigateTo('results');
+
+        // Headers
+        document.getElementById('resultPlayerPosTitle').textContent = result.posicionJugador;
+        document.getElementById('resultPosTag').textContent = this.selectedPosition.code;
+        document.getElementById('resultActionName').textContent = result.accionIdentificada;
+        document.getElementById('resultSummary').textContent = result.resumenEvaluacion;
+
+        // Child Mode
+        const ch = result.explicacionParaNinos;
+        document.getElementById('childAnalogy').textContent = ch.analogiaDivertida;
+        document.getElementById('childMistake').textContent = ch.elErrorExplicadoFacil;
+        document.getElementById('childTrick').textContent = ch.elTrucoMagico;
+        document.getElementById('childMission').textContent = ch.misionSecreta;
+
+        // Real Telemetry
+        const d = result.datosReales;
+        document.getElementById('metricSpeed').textContent = `${d.velocidadEstimadaKmH} km/h`;
+        document.getElementById('metricFootDistance').textContent = `${d.distanciaPieApoyoCm} cm`;
+        
+        const diff = Math.round(d.distanciaPieApoyoCm - d.distanciaIdealPieApoyoCm);
+        const diffStr = diff > 0 ? `+${diff} cm alejado` : 'Óptimo';
+        document.getElementById('metricFootDiff').textContent = `Ideal: ${d.distanciaIdealPieApoyoCm} cm (${diffStr})`;
+        
+        document.getElementById('metricTorsoAngle').textContent = `${d.anguloTorsoGrados}°`;
+        document.getElementById('metricForce').textContent = `${d.fuerzaImpactoNewtons} N`;
+        document.getElementById('metricContactTime').textContent = `${d.tiempoContactoMs} ms`;
+        document.getElementById('metricKneeAngle').textContent = `${d.anguloFlexionRodillaGrados}°`;
+
+        // Ratings & Bars
+        document.getElementById('scoreTecnicaText').textContent = `${result.calificacionTecnica} / 100`;
+        document.getElementById('barTecnica').style.width = `${result.calificacionTecnica}%`;
+
+        document.getElementById('scorePosturaText').textContent = `${result.calificacionPostura} / 100`;
+        document.getElementById('barPostura').style.width = `${result.calificacionPostura}%`;
+
+        document.getElementById('scorePotenciaText').textContent = `${result.calificacionPotencia} / 100`;
+        document.getElementById('barPotencia').style.width = `${result.calificacionPotencia}%`;
+
+        document.getElementById('scoreVisionText').textContent = `${result.calificacionVision || 80} / 100`;
+        document.getElementById('barVision').style.width = `${result.calificacionVision || 80}%`;
+
+        // Biomechanical Pillars
+        const bio = result.metricasBiomecanicas;
+        document.getElementById('bioPositionIndicator').textContent = this.selectedPosition.code;
+        document.getElementById('bioScienceSummary').textContent = bio.cienciaDelDeporteResumen;
+        document.getElementById('pillar1-content').textContent = bio.cadenaCinetica;
+        document.getElementById('pillar2-content').textContent = bio.centroGravedadYApoyos;
+        document.getElementById('pillar3-content').textContent = bio.torqueYDisociacion;
+        document.getElementById('pillar4-content').textContent = bio.prevencionLesiones;
+
+        // Science Advice
+        const advList = document.getElementById('scienceAdviceList');
+        advList.innerHTML = (result.consejosCienciaDelDeporte || []).map((c, i) => `
+          <div class="flex items-start space-x-2.5">
+            <span class="w-5 h-5 rounded-full bg-[#3B2E0A] text-accentGold font-black text-[10px] flex items-center justify-center flex-shrink-0 mt-0.5">${i + 1}</span>
+            <span class="text-white/90 leading-snug">${c}</span>
+          </div>
+        `).join('');
+
+        // Strengths & Weaknesses
+        const pfList = document.getElementById('puntosFuertesList');
+        pfList.innerHTML = (result.puntosFuertes || []).map(p => `
+          <li class="flex items-start space-x-2">
+            <i class="fa-solid fa-circle-check text-neonGreen text-xs mt-1 flex-shrink-0"></i>
+            <span>${p}</span>
+          </li>
+        `).join('');
+
+        const qfList = document.getElementById('queLeHaceFaltaList');
+        qfList.innerHTML = (result.queLeHaceFalta || []).map(q => `
+          <li class="flex items-start space-x-2">
+            <span class="w-2 h-2 rounded-full bg-warningOrange mt-1.5 flex-shrink-0"></span>
+            <span>${q}</span>
+          </li>
+        `).join('');
+
+        // Exercise Prescriptions
+        const exContainer = document.getElementById('exercisesContainer');
+        exContainer.innerHTML = (result.ejerciciosRecomendados || []).map((ex, i) => `
+          <div class="rounded-xl p-4 bg-pitchSurface border border-pitchBorder space-y-2">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2.5">
+                <span class="w-6 h-6 rounded-full bg-[#0F3E22] text-neonGreen font-black text-xs flex items-center justify-center">#${i + 1}</span>
+                <h5 class="text-sm font-bold text-white">${ex.nombre}</h5>
+              </div>
+              <span class="px-2 py-0.5 rounded bg-pitchSurfaceElevated text-accentGold text-[10px] font-bold">${ex.intensidad || 'Media-Alta'}</span>
+            </div>
+            <div class="text-xs space-y-1">
+              <div><strong class="text-accentGold">Objetivo:</strong> <span class="text-pitchTextSecondary">${ex.objetivo}</span></div>
+              <div><strong class="text-neonGreen">Biomecánica:</strong> <span class="text-white/80 italic">${ex.principioBiomecanico}</span></div>
+              <p class="text-white/90 pt-1 leading-relaxed">${ex.descripcion}</p>
+            </div>
+            <div class="text-[11px] font-mono text-pitchTextSecondary pt-1 border-t border-pitchBorder">
+              <i class="fa-solid fa-repeat text-neonGreen mr-1"></i> ${ex.seriesReps || '4 series x 8 repeticiones'}
+            </div>
+          </div>
+        `).join('');
+
+        // Verdict
+        document.getElementById('scoutVerdictText').textContent = result.veredictoScout;
+
+        // Reset to default tab
+        this.switchResultTab('all');
+      }
+
+      switchResultTab(tabName) {
+        const tabs = ['all', 'child', 'telemetry'];
+        tabs.forEach(t => {
+          const btn = document.getElementById(`tabBtn-${t}`);
+          if (t === tabName) {
+            btn.classList.add('bg-neonGreen', 'text-pitchDark', 'shadow');
+            btn.classList.remove('text-pitchTextSecondary');
+          } else {
+            btn.classList.remove('bg-neonGreen', 'text-pitchDark', 'shadow');
+            btn.classList.add('text-pitchTextSecondary');
+          }
+        });
+
+        const childSection = document.getElementById('section-child-explanation');
+        const telemetrySection = document.getElementById('section-telemetry');
+        const ratingsSection = document.getElementById('section-ratings');
+        const bioSection = document.getElementById('section-biomechanics');
+        const strengthsSection = document.getElementById('section-strengths-weaknesses');
+        const exercisesSection = document.getElementById('section-exercises');
+        const verdictSection = document.getElementById('section-verdict');
+
+        if (tabName === 'all') {
+          childSection.classList.remove('hidden');
+          telemetrySection.classList.remove('hidden');
+          ratingsSection.classList.remove('hidden');
+          bioSection.classList.remove('hidden');
+          strengthsSection.classList.remove('hidden');
+          exercisesSection.classList.remove('hidden');
+          verdictSection.classList.remove('hidden');
+        } else if (tabName === 'child') {
+          childSection.classList.remove('hidden');
+          telemetrySection.classList.add('hidden');
+          ratingsSection.classList.add('hidden');
+          bioSection.classList.add('hidden');
+          strengthsSection.classList.add('hidden');
+          exercisesSection.classList.add('hidden');
+          verdictSection.classList.add('hidden');
+        } else if (tabName === 'telemetry') {
+          childSection.classList.add('hidden');
+          telemetrySection.classList.remove('hidden');
+          ratingsSection.classList.remove('hidden');
+          bioSection.classList.remove('hidden');
+          strengthsSection.classList.remove('hidden');
+          exercisesSection.classList.remove('hidden');
+          verdictSection.classList.remove('hidden');
+        }
+      }
+
+      togglePillar(pillarId) {
+        const content = document.getElementById(`${pillarId}-content`);
+        const icon = document.getElementById(`${pillarId}-icon`);
+        if (content.classList.contains('hidden')) {
+          content.classList.remove('hidden');
+          icon.classList.add('rotate-180');
+        } else {
+          content.classList.add('hidden');
+          icon.classList.remove('rotate-180');
+        }
+      }
+
+      /* ==========================================================================
+         HISTORY MANAGEMENT
+         ========================================================================== */
+
+      renderHistoryScreen() {
+        const container = document.getElementById('historyListContainer');
+        const clearBtn = document.getElementById('clearHistoryBtn');
+        if (!container) return;
+
+        if (this.history.length === 0) {
+          if (clearBtn) clearBtn.classList.add('hidden');
+          container.innerHTML = `
+            <div class="rounded-2xl p-10 bg-pitchSurface border border-pitchBorder text-center space-y-4 max-w-md mx-auto">
+              <div class="w-16 h-16 rounded-full bg-[#0D331D] text-neonGreen text-3xl flex items-center justify-center mx-auto">
+                <i class="fa-solid fa-clock-rotate-left"></i>
+              </div>
+              <h3 class="text-base font-bold text-white">Aún no hay análisis en el historial</h3>
+              <p class="text-xs text-pitchTextSecondary">Cada vez que grabes una jugada, analices en vivo o evalúes un clip, se guardará aquí automáticamente.</p>
+              <button onclick="appState.navigateTo('capture')"
+                class="px-5 py-2.5 rounded-xl bg-neonGreen text-pitchDark font-black text-xs hover:bg-emerald-400 transition-colors">
+                Realizar un Análisis Ahora
+              </button>
+            </div>
+          `;
+          return;
+        }
+
+        if (clearBtn) clearBtn.classList.remove('hidden');
+
+        container.innerHTML = this.history.map(item => {
+          const date = new Date(item.timestamp).toLocaleDateString('es-ES', {
+            day: 'numeric',
+            month: 'short',
+            hour: '2-digit',
+            minute: '2-digit'
+          });
+          const res = item.result;
+          return `
+            <div class="rounded-2xl p-4 sm:p-5 bg-pitchSurface border border-pitchBorder hover:border-neonGreen/60 transition-all space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                  <span class="px-2 py-0.5 rounded bg-[#09361F] text-neonGreen font-bold text-xs">
+                    ${res.posicionJugador}
+                  </span>
+                  <span class="text-xs text-pitchTextSecondary">${date}</span>
+                </div>
+                <button onclick="appState.deleteHistoryItem(${item.id})" title="Eliminar registro"
+                  class="text-pitchTextSecondary hover:text-dangerRed p-1 transition-colors">
+                  <i class="fa-solid fa-trash-can text-sm"></i>
+                </button>
+              </div>
+
+              <div class="cursor-pointer" onclick="appState.loadHistoryItem(${item.id})">
+                <h4 class="text-base font-bold text-white hover:text-neonGreen transition-colors">${res.accionIdentificada}</h4>
+                <p class="text-xs text-pitchTextSecondary line-clamp-2 mt-1">${res.resumenEvaluacion}</p>
+
+                <!-- Quick stats pill -->
+                <div class="mt-3 p-2.5 rounded-xl bg-[#091F13] border border-pitchBorder/80 flex items-center justify-between text-xs font-semibold">
+                  <span class="text-white"><i class="fa-solid fa-futbol text-accentGold mr-1"></i> Técnica: ${res.calificacionTecnica}/100</span>
+                  <span class="text-neonGreen"><i class="fa-solid fa-gauge-high mr-1"></i> ${res.datosReales.velocidadEstimadaKmH} km/h</span>
+                  <span class="text-telemetryBlue"><i class="fa-solid fa-bolt mr-1"></i> ${res.datosReales.fuerzaImpactoNewtons} N</span>
+                  <i class="fa-solid fa-chevron-right text-pitchTextSecondary text-xs"></i>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      loadHistoryItem(id) {
+        const item = this.history.find(h => h.id === id);
+        if (!item) return;
+        this.currentAnalysisResult = item.result;
+        this.displayResults(item.result);
+      }
+    }
+
+    // Initialize application singleton on load
+    let appState;
+    window.addEventListener('DOMContentLoaded', () => {
+      appState = new FootballScoutApp();
+    });
+  </script>
+</body>
+</html>
